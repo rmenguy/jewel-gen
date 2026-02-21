@@ -1,0 +1,389 @@
+
+import React, { useState, useRef, useMemo } from 'react';
+import { downloadBase64Image } from '../services/downloadService';
+import { ProductionItem } from '../types';
+import { generateProductionPhoto } from '../services/geminiService';
+import { Button } from './Button';
+
+interface ProductionEngineProps {
+  queue: ProductionItem[];
+  setQueue: (q: ProductionItem[] | ((prev: ProductionItem[]) => ProductionItem[])) => void;
+  mannequinImage: string | null;
+  setMannequinImage: (img: string | null) => void;
+}
+
+const PROMPT_PRESETS = {
+  default: "Professional luxury e-commerce photography, soft studio lighting, ultra-high resolution, 4K detail, neutral minimalist background",
+  closeup: "[TECHNICAL RECONSTRUCTION] Scene Theme: High-end jewelry editorial. Lighting: Professional Hard direct sunlight setup, positioned at Side lighting from left, with undefined quality and undefined intensity. Camera Optics: Shot with a Macro lens at Eye-level angle. Materiality: The product interacts with a Detailed skin pores, smooth metallic gold, glossy enamel surface. Composition: Optimized Extreme close-up framing, undefined subject scaling, utilizing undefined negative space for visual balance. Render Style: Photorealistic, 8k resolution, global illumination, raytraced reflections, high-end commercial finish.",
+  closeup2: "[TECHNICAL RECONSTRUCTION] Scene Theme: jewelry editorial. Lighting: Professional hard warm sunlight setup, positioned at top-left, with undefined quality and undefined intensity. Camera Optics: Shot with a macro lens lens at straight-on angle. Materiality: The product interacts with a high definition skin pores, glossy lips, polished gold metal, smooth enamel surface. Composition: Optimized extreme close-up framing, undefined subject scaling, utilizing undefined negative space for visual balance. Render Style: Photorealistic, 8k resolution, global illumination, raytraced reflections, high-end commercial finish.",
+  sunkissed: "High-end jewelry lifestyle photography, candid shot, outdoor setting with {background_context}. The model is wearing {jewelry_description}. Natural hard sunlight hitting the face, creating dappled light and artistic distinct shadows. Golden hour atmosphere. Shot on 35mm Kodak Portra film, slight film grain, highly detailed skin texture, pores visible, peach fuzz, realistic imperfections. The jewelry is catching the sunlight sparkles. Soft focus background, depth of field. Warm, summer breeze vibe.",
+  ethereal: "Editorial fashion photography, artistic motion blur, slow shutter speed effect. The model is in motion, turning head slightly, hair flowing dynamically, wearing {jewelry_description}. The jewelry remains sharp and is the main focal point. Dreamy and ethereal atmosphere, soft cinematic lighting. Background is {background_context}, abstract and blurry. Added monochrome noise, subtle chromatic aberration. High-fashion magazine aesthetic, expressive and emotive.",
+  flash: "Flash photography style, direct on-camera flash, hard lighting, high contrast. Night out aesthetic or darkened studio. The model looks chic and confident wearing {jewelry_description}. Visuals reminiscent of 90s vogue editorials. Sharp details on the jewelry metal and stones. Background is {background_context} with a vignette effect. Raw aesthetic, authentic skin texture, slight overexposure on highlights, urban luxury vibe.",
+  soft: "Soft luxury minimalist photography, window light illumination from the side. Soft transitions between light and shadow. Ultra-realistic skin tones. Close-up shot of the model wearing {jewelry_description}. The image has a subtle matte finish, low contrast, pastel tones. Background is {background_context}, composed of organic textures. Serene, elegant, quiet luxury aesthetic. 8k resolution but with a film-like softness.",
+  custom: ""
+};
+
+export const ProductionEngine: React.FC<ProductionEngineProps> = ({
+  queue,
+  setQueue,
+  mannequinImage,
+  setMannequinImage
+}) => {
+  const [artisticDirection, setArtisticDirection] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState<keyof typeof PROMPT_PRESETS>('default');
+  const [productListInput, setProductListInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedForDownload, setSelectedForDownload] = useState<Set<string>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const stats = useMemo(() => {
+      return {
+          total: queue.length,
+          done: queue.filter(i => i.status === 'COMPLETED').length,
+          active: queue.filter(i => i.status === 'PROCESSING').length,
+          fail: queue.filter(i => i.status === 'ERROR').length
+      };
+  }, [queue]);
+
+  const handleMannequinUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setMannequinImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePresetChange = (preset: keyof typeof PROMPT_PRESETS) => {
+    setSelectedPreset(preset);
+    if (preset === 'custom') {
+      return;
+    }
+    setArtisticDirection(PROMPT_PRESETS[preset]);
+  };
+
+  const parseProductList = () => {
+    const lines = productListInput.trim().split('\n');
+    const items: ProductionItem[] = lines
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        const parts = line.split('|').map(p => p.trim());
+        if (parts.length >= 3) {
+          return {
+            id: crypto.randomUUID(),
+            sku: parts[0],
+            name: parts[1],
+            imageUrl: parts[2],
+            category: parts[3] || '',
+            status: 'PENDING' as const
+          };
+        }
+        if (parts.length === 1 && (parts[0].startsWith('http') || parts[0].startsWith('data:'))) {
+             return {
+                id: crypto.randomUUID(),
+                sku: `IMP-${Math.floor(Math.random() * 10000)}`,
+                name: 'Quick Import',
+                imageUrl: parts[0],
+                status: 'PENDING' as const
+            };
+        }
+        return null;
+      })
+      .filter((item): item is ProductionItem => item !== null);
+
+    const newQueue = [...queue, ...items];
+    setQueue(newQueue);
+    return newQueue;
+  };
+
+  const startProduction = async () => {
+    let effectivePrompt = artisticDirection;
+    if (!effectivePrompt.trim()) {
+        effectivePrompt = "Professional luxury e-commerce photography, soft studio lighting, ultra-high resolution, 4K detail, neutral minimalist background";
+        setArtisticDirection(effectivePrompt);
+    }
+
+    let currentQueue = queue;
+    if (productListInput.trim()) {
+        const newItems = parseProductList();
+        setProductListInput('');
+        currentQueue = newItems;
+    }
+
+    const pendingItems = currentQueue.filter(i => i.status === 'PENDING' || i.status === 'ERROR');
+
+    if (pendingItems.length === 0) {
+        alert("Queue empty or all items completed.");
+        return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+        if ((window as any).aistudio) {
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            if (!hasKey) await (window as any).aistudio.openSelectKey();
+        }
+    } catch (e) { console.warn("API check warning", e); }
+
+    const updateItemStatus = (id: string, updates: Partial<ProductionItem>) => {
+        setQueue(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    };
+
+    // Process items in parallel (5 at a time)
+    const processItem = async (item: ProductionItem): Promise<void> => {
+        updateItemStatus(item.id, { status: 'PROCESSING', error: undefined });
+        setSelectedItemId(item.id);
+
+        try {
+            console.log('[PRODUCTION] Starting generation for item:', item.id);
+
+            let itemPrompt = effectivePrompt;
+            const jewelryDesc = item.category || item.name || 'jewelry';
+            const backgroundCtx = 'neutral elegant background';
+
+            itemPrompt = itemPrompt
+                .replace('{jewelry_description}', jewelryDesc)
+                .replace('{background_context}', backgroundCtx);
+
+            const resultImage = await generateProductionPhoto(
+                mannequinImage,
+                item.imageUrl,
+                itemPrompt,
+                item.category
+            );
+            console.log('[PRODUCTION] Generation successful for item:', item.id);
+            updateItemStatus(item.id, { status: 'COMPLETED', resultImage });
+        } catch (err: any) {
+            console.error('[PRODUCTION] Error for item:', item.id, err);
+            const errorMsg = err.message || String(err);
+            updateItemStatus(item.id, { status: 'ERROR', error: errorMsg });
+        }
+    };
+
+    // Process in batches of 5
+    const batchSize = 5;
+    for (let i = 0; i < pendingItems.length; i += batchSize) {
+        const batch = pendingItems.slice(i, i + batchSize);
+        await Promise.all(batch.map(processItem));
+
+        if (i + batchSize < pendingItems.length) {
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+
+    setIsProcessing(false);
+  };
+
+  const toggleSelection = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSet = new Set(selectedForDownload);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedForDownload(newSet);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedForDownload.size === queue.length && queue.length > 0) setSelectedForDownload(new Set());
+    else setSelectedForDownload(new Set(queue.map(i => i.id)));
+  };
+
+  const handleDownloadSelected = () => {
+    const targets = queue.filter(q => selectedForDownload.has(q.id) && q.status === 'COMPLETED' && q.resultImage);
+    for (const item of targets) {
+        const base64 = item.resultImage!.includes('base64,') ? item.resultImage! : `data:image/png;base64,${item.resultImage!}`;
+        downloadBase64Image(base64, `production_4K_${item.sku}_${Date.now()}.png`);
+    }
+  };
+
+  const updateItemCategory = (id: string, category: string) => {
+      setQueue(prev => prev.map(p => p.id === id ? { ...p, category } : p));
+  };
+
+  const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
+  const runnableCount = queue.filter(i => i.status === 'PENDING' || i.status === 'ERROR').length;
+
+  return (
+    <div className="w-full h-[calc(100vh-140px)] flex gap-4 animate-fadeIn">
+      <div className="w-1/2 flex flex-col gap-4">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 border-l-4 border-l-indigo-500">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                Production Batch // <span className="text-indigo-600">Nano Banana Pro 4K</span>
+            </h2>
+            <div className="grid grid-cols-4 gap-4">
+                <StatCard label="TOTAL" value={stats.total} />
+                <StatCard label="DONE" value={stats.done} color="text-emerald-500" />
+                <StatCard label="ACTIVE" value={stats.active} color="text-indigo-500" />
+                <StatCard label="FAIL" value={stats.fail} color="text-red-500" />
+            </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden relative">
+            <div className="p-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                <div className="flex gap-2">
+                    <button onClick={handleSelectAll} className={`text-[10px] px-2 py-1 rounded border transition-colors ${selectedForDownload.size > 0 && selectedForDownload.size === queue.length ? 'bg-indigo-50 border-indigo-400 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        {selectedForDownload.size > 0 && selectedForDownload.size === queue.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    {selectedForDownload.size > 0 && (
+                        <button onClick={handleDownloadSelected} className="text-[10px] bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded text-emerald-600 border border-emerald-200 transition-colors font-bold flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            DOWNLOAD 4K ({selectedForDownload.size})
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-gray-50">
+                 {queue.length === 0 && !productListInput ? (
+                    <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl m-4">
+                        <p className="text-xs uppercase tracking-widest mb-2">Queue Empty</p>
+                    </div>
+                 ) : (
+                    <div className="grid grid-cols-4 lg:grid-cols-5 gap-2">
+                        <div className="aspect-square bg-white border border-gray-200 rounded-md p-2 flex flex-col relative group hover:border-gray-300 transition-colors shadow-sm">
+                            <span className="text-[8px] text-gray-400 uppercase font-bold mb-1">QUICK ADD</span>
+                            <textarea className="w-full h-full bg-transparent text-[9px] font-mono text-gray-500 outline-none resize-none placeholder-gray-300" placeholder="SKU|Name|URL|Cat" value={productListInput} onChange={(e) => setProductListInput(e.target.value)} />
+                        </div>
+                        {queue.map((item) => (
+                            <div key={item.id} onClick={() => setSelectedItemId(item.id)} className={`aspect-square relative rounded-md overflow-hidden cursor-pointer border transition-all group ${selectedItemId === item.id ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-gray-200 hover:border-gray-300'} ${item.status === 'ERROR' ? 'border-red-300' : ''}`}>
+                                <div className="absolute top-1 left-1 z-20" onClick={(e) => toggleSelection(item.id, e)}>
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedForDownload.has(item.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white/80 border-gray-300 hover:border-indigo-400'}`}>
+                                        {selectedForDownload.has(item.id) && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+                                    </div>
+                                </div>
+                                {item.status === 'COMPLETED' && item.resultImage ? <img src={item.resultImage} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[8px] font-mono text-gray-400 break-all px-1 text-center">{item.sku}</span></div>}
+                                <div className="absolute top-1 right-1 z-10"><StatusDot status={item.status} /></div>
+                                {item.status === 'PROCESSING' && <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center z-10 p-2 text-center">
+                                    <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-1"></div>
+                                    <span className="text-[7px] text-indigo-600 animate-pulse font-bold uppercase">Processing...</span>
+                                </div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+             <div className="p-3 bg-white border-t border-gray-200">
+                <Button className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 border-none shadow-sm" onClick={startProduction} isLoading={isProcessing}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    EXECUTE BATCH {String(runnableCount).padStart(3, '0')}
+                </Button>
+             </div>
+        </div>
+      </div>
+
+      <div className="w-1/2 flex flex-col gap-4">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 flex flex-col relative overflow-hidden">
+             <div className="absolute top-4 left-4 z-10 flex gap-2">
+                <div className="bg-white/90 backdrop-blur border border-gray-200 px-2 py-1 rounded text-[10px] font-bold text-gray-900 flex items-center gap-2 shadow-sm">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> STUDIO <span className="text-indigo-600">4K PRO</span>
+                </div>
+             </div>
+             <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden">
+                {selectedItem ? (
+                    selectedItem.status === 'COMPLETED' && selectedItem.resultImage ? <img src={selectedItem.resultImage} className="w-full h-full object-contain shadow-2xl" /> : (
+                        <div className="flex flex-col items-center justify-center opacity-60 p-4">
+                             <div className="w-32 h-32 border border-gray-200 flex items-center justify-center mb-4 bg-white overflow-hidden rounded-lg shadow-sm">
+                                {selectedItem.imageUrl ? <img src={selectedItem.imageUrl.split('|')[0]} className="w-full h-full object-contain opacity-50 grayscale" /> : <span className="text-xs text-gray-400">NO PREVIEW</span>}
+                             </div>
+                             <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">{selectedItem.sku}</p>
+                             <p className="text-[10px] text-gray-400 mt-1 uppercase">{selectedItem.status}</p>
+                             {selectedItem.error && <p className="text-[9px] text-red-500 mt-2 px-6 text-center border border-red-200 bg-red-50 py-1 rounded font-mono">{selectedItem.error}</p>}
+                        </div>
+                    )
+                ) : <p className="text-xs text-gray-400 uppercase tracking-widest">No Selection</p>}
+             </div>
+             {selectedItem && selectedItem.status === 'COMPLETED' && selectedItem.resultImage && (
+                <div className="h-14 border-t border-gray-200 bg-white flex items-center justify-between px-4">
+                    <span className="text-[9px] font-mono text-gray-400">RES: 4096 x 5461 // UHD_4K</span>
+                    <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
+                            const base64 = selectedItem.resultImage!.includes('base64,') ? selectedItem.resultImage! : `data:image/png;base64,${selectedItem.resultImage!}`;
+                            downloadBase64Image(base64, `4K_studio_${selectedItem.sku}.png`);
+                        }}>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        DOWNLOAD 4K
+                    </Button>
+                </div>
+             )}
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-[9px] uppercase font-bold text-gray-400">Model Reference</label>
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleMannequinUpload} />
+                        <button onClick={() => fileInputRef.current?.click()} className="text-[9px] text-indigo-600 hover:text-indigo-500 font-bold uppercase">{mannequinImage ? 'Switch' : 'Upload'}</button>
+                    </div>
+                    <div className={`h-12 bg-gray-50 border rounded flex items-center px-2 gap-3 transition-colors ${mannequinImage ? 'border-indigo-400' : 'border-gray-200'}`}>
+                        <div className="w-8 h-8 bg-gray-100 rounded overflow-hidden">{mannequinImage ? <img src={mannequinImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px]">NONE</div>}</div>
+                        <span className="text-[9px] font-mono truncate text-gray-500">{mannequinImage ? 'Active_Portrait_4K.png' : 'Pending...'}</span>
+                    </div>
+                </div>
+                <div>
+                    <label className="text-[9px] uppercase font-bold text-gray-400 mb-2 block">Item Category</label>
+                    <div className="h-12 bg-gray-50 border border-gray-200 rounded flex items-center px-2">
+                        <select className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer" value={selectedItem?.category || ''} onChange={(e) => selectedItem && updateItemCategory(selectedItem.id, e.target.value)}>
+                            <option value="">Auto Detect</option>
+                            <option value="necklace">Collier (Necklace)</option>
+                            <option value="ring">Bague (Ring)</option>
+                            <option value="earrings">Boucles (Earrings)</option>
+                            <option value="bracelet">Bracelet</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <label className="text-[9px] uppercase font-bold text-gray-400 mb-2 block">Prompt Preset</label>
+                <div className="h-12 bg-gray-50 border border-gray-200 rounded flex items-center px-2 mb-3">
+                    <select
+                        className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer"
+                        value={selectedPreset}
+                        onChange={(e) => handlePresetChange(e.target.value as keyof typeof PROMPT_PRESETS)}
+                    >
+                        <option value="default">Default (Natif)</option>
+                        <option value="closeup">Close Up</option>
+                        <option value="closeup2">Close Up 2</option>
+                        <option value="sunkissed">Sunkissed & Natural (Golden Hour)</option>
+                        <option value="ethereal">Ethereal Motion (Flou Artistique)</option>
+                        <option value="flash">Flash Editorial (Vogue/Paparazzi)</option>
+                        <option value="soft">Soft & Organic (Lumiere du Matin)</option>
+                        <option value="custom">Custom (Personnalise)</option>
+                    </select>
+                </div>
+                <label className="text-[9px] uppercase font-bold text-gray-400 mb-2 block">Atmosphere Prompt</label>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative focus-within:border-indigo-500 transition-colors">
+                    <textarea
+                        className="w-full h-20 bg-transparent text-sm text-gray-700 outline-none resize-none placeholder-gray-400 leading-relaxed"
+                        placeholder="e.g. Minimalist concrete loft, soft directional morning light..."
+                        value={artisticDirection}
+                        onChange={(e) => {
+                            setArtisticDirection(e.target.value);
+                            setSelectedPreset('custom');
+                        }}
+                        disabled={selectedPreset !== 'custom'}
+                    />
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatCard: React.FC<{ label: string, value: number, color?: string }> = ({ label, value, color = "text-gray-900" }) => (
+    <div className="bg-gray-50 border border-gray-200 rounded p-2">
+        <p className="text-[8px] font-bold text-gray-400 uppercase mb-0.5">{label}</p>
+        <p className={`text-xl font-mono font-bold leading-none ${color}`}>{value}</p>
+    </div>
+);
+
+const StatusDot: React.FC<{ status: string }> = ({ status }) => {
+    let colorClass = "bg-gray-300";
+    if (status === 'COMPLETED') colorClass = "bg-emerald-500 shadow-[0_0_5px_#10b981]";
+    if (status === 'PROCESSING') colorClass = "bg-yellow-500 animate-pulse";
+    if (status === 'ERROR') colorClass = "bg-red-500";
+    return <div className={`w-2 h-2 rounded-full border border-white ${colorClass}`}></div>
+};

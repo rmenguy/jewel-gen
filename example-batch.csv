@@ -1,0 +1,11 @@
+SKU,Category,Image URL,Description,Custom Prompt
+COLL-001,collier,https://example.com/necklace1.jpg,Collier en or,Luxury studio lighting with soft shadows
+COLL-002,collier,https://example.com/necklace2.jpg,Collier en argent,
+BAGUE-001,bague,https://example.com/ring1.jpg,Bague diamant,Editorial close-up with dramatic lighting
+BAGUE-002,bague,https://example.com/ring2.jpg,Bague émeraude,
+BRLT-001,bracelet,https://example.com/bracelet1.jpg,Bracelet perles,
+BRLT-002,bracelet,https://example.com/bracelet2.jpg,Bracelet cuir,Minimalist aesthetic with neutral background
+BO-001,boucles-oreilles,https://example.com/earrings1.jpg,Boucles d'oreilles or,
+BO-002,boucles-oreilles,https://example.com/earrings2.jpg,Boucles d'oreilles argent,
+PEND-001,pendentif,https://example.com/pendant1.jpg,Pendentif coeur,
+PEND-002,pendentif,https://example.com/pendant2.jpg,Pendentif étoile,Soft romantic lighting
