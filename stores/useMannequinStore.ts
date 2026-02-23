@@ -28,6 +28,11 @@ interface MannequinStore {
   imageHistory: string[];
   error: string | null;
 
+  // Photo Book state
+  bookImages: string[];
+  isGeneratingBook: boolean;
+  bookProgress: number;
+
   setCriteria: (updates: Partial<MannequinCriteria>) => void;
   setCurrentImage: (img: string | null) => void;
   setReferenceImage: (img: string | null) => void;
@@ -37,6 +42,12 @@ interface MannequinStore {
   pushToHistory: (img: string) => void;
   undo: () => void;
   resetAll: () => void;
+
+  // Photo Book actions
+  addBookImage: (img: string) => void;
+  setIsGeneratingBook: (v: boolean) => void;
+  setBookProgress: (p: number) => void;
+  clearBook: () => void;
 }
 
 export const useMannequinStore = create<MannequinStore>((set, get) => ({
@@ -47,6 +58,10 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
   isRefining: false,
   imageHistory: [],
   error: null,
+
+  bookImages: [],
+  isGeneratingBook: false,
+  bookProgress: 0,
 
   setCriteria: (updates) =>
     set((state) => ({ criteria: { ...state.criteria, ...updates } })),
@@ -69,6 +84,12 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
     set({ currentImage: previous, imageHistory: rest });
   },
 
+  addBookImage: (img) =>
+    set((state) => ({ bookImages: [...state.bookImages, img] })),
+  setIsGeneratingBook: (v) => set({ isGeneratingBook: v }),
+  setBookProgress: (p) => set({ bookProgress: p }),
+  clearBook: () => set({ bookImages: [], bookProgress: 0 }),
+
   resetAll: () =>
     set({
       criteria: { ...DEFAULT_CRITERIA },
@@ -76,5 +97,7 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
       referenceImage: null,
       imageHistory: [],
       error: null,
+      bookImages: [],
+      bookProgress: 0,
     }),
 }));

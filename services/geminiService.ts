@@ -379,6 +379,73 @@ BODY: ${bodyPrompt}.${criteria.customPrompt?.trim() ? `\nADDITIONAL: ${criteria.
 };
 
 /**
+ * Photo Book: 4 studio angles for identity-consistent multi-angle shoots.
+ */
+export const BOOK_ANGLES = [
+    {
+        key: 'front',
+        label: 'Face / Front',
+        prompt: 'ANGLE: Front-facing portrait. Direct eye contact with camera. Head-and-shoulders to waist framing. Straight-on camera angle, no tilt.',
+    },
+    {
+        key: 'left_profile',
+        label: 'Profil Gauche (3/4)',
+        prompt: 'ANGLE: Left three-quarter view. The model is turned approximately 30-40 degrees to their right, showing the left side of their face prominently. Slight upward chin angle. Same head-and-shoulders framing.',
+    },
+    {
+        key: 'right_profile',
+        label: 'Profil Droit (3/4)',
+        prompt: 'ANGLE: Right three-quarter view. The model is turned approximately 30-40 degrees to their left, showing the right side of their face prominently. Slight upward chin angle. Same head-and-shoulders framing.',
+    },
+    {
+        key: 'full_body',
+        label: 'Plan Large (Full Body)',
+        prompt: 'ANGLE: Full-body wide shot. The model is visible from head to toe. Standing pose, arms naturally at sides. Camera at chest height. Full body with some space around.',
+    },
+];
+
+/**
+ * Generate a single book shot from a reference mannequin image.
+ * Uses Gemini image-to-image to maintain identity across angles.
+ */
+export const generateBookShot = async (
+    referenceImageBase64: string,
+    anglePrompt: string
+): Promise<string> => {
+    return withRetry(async () => {
+        const imageData = referenceImageBase64.includes('base64,')
+            ? referenceImageBase64.split(',')[1]
+            : referenceImageBase64;
+
+        const prompt = `You are generating a professional fashion model photo book. The reference image shows the model. Generate a NEW photo of THIS EXACT SAME person (identical face, identical hair color and style, identical skin tone, identical clothing) but from a different angle and framing.
+
+CRITICAL IDENTITY PRESERVATION: The person in the output must be RECOGNIZABLY the same individual as in the reference. Same facial features, same hair, same outfit, same body type. Do NOT change anything about the person.
+
+${anglePrompt}
+
+TECHNICAL: Professional studio photography, Hasselblad quality, soft natural lighting, clean neutral background. Kodak Portra 400 film grain, photorealistic. Output the new image.`;
+
+        const parts = [
+            { text: prompt },
+            { inlineData: { mimeType: 'image/png', data: imageData } },
+        ];
+
+        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+            contents: [{ parts }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+
+        throw new Error('No book shot image returned by the API.');
+    });
+};
+
+/**
  * Fetch an external image as base64.
  * Works directly from the browser for most CDNs.
  * Falls back to corsproxy.io for CORS-blocked URLs.
@@ -438,10 +505,17 @@ export const generateProductionPhoto = async (
             prompt += `MANNEQUIN: Worn by a realistic model. `;
         }
 
-        if (category.toLowerCase().includes('collier') || category.toLowerCase().includes('necklace')) {
-            prompt += `PLACEMENT: Around the neck. `;
-        } else if (category.toLowerCase().includes('bague') || category.toLowerCase().includes('ring')) {
-            prompt += `PLACEMENT: On finger. `;
+        const categoryLower = category.toLowerCase();
+        if (categoryLower.includes('sautoir')) {
+            prompt += `PLACEMENT: Long necklace (sautoir) hanging freely from the neck, falling to the chest or waist level. The chain/pendant must drape naturally down the torso with visible length. NOT a short necklace — this is a long sautoir. `;
+        } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
+            prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
+        } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
+            prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
+        } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
+            prompt += `PLACEMENT: Earrings attached to earlobes, clearly visible. Head angled slightly to showcase the jewelry. Hair pulled back or tucked behind the ear if needed. `;
+        } else if (categoryLower.includes('bracelet')) {
+            prompt += `PLACEMENT: Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose. `;
         }
 
         prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
@@ -480,6 +554,73 @@ export const generateProductionPhoto = async (
         }
 
         throw new Error("Aucune image générée.");
+    });
+};
+
+/**
+ * Generate a production photo with multiple jewelry pieces stacked on the same mannequin.
+ */
+export const generateStackedProductionPhoto = async (
+    mannequinBase64: string | null,
+    products: Array<{ imageUrl: string; category: string; name: string }>,
+    artisticDirection: string
+): Promise<string> => {
+    return withRetry(async () => {
+        const placementMap: Record<string, string> = {
+            'sautoir': 'long sautoir necklace hanging to the chest or waist',
+            'necklace': 'necklace worn close to the neck on the collarbone',
+            'collier': 'necklace worn close to the neck on the collarbone',
+            'ring': 'ring worn on the finger',
+            'bague': 'ring worn on the finger',
+            'earrings': 'earrings attached to earlobes, clearly visible',
+            'boucles': 'earrings attached to earlobes, clearly visible',
+            'bracelet': 'bracelet worn on the wrist',
+        };
+
+        const productDescriptions = products.map((p, i) => {
+            const catLower = (p.category || p.name || '').toLowerCase();
+            const placement = Object.entries(placementMap).find(([key]) => catLower.includes(key));
+            return `Product ${i + 1} (image ${mannequinBase64 ? i + 2 : i + 1}): ${p.category || p.name || 'jewelry'} — ${placement?.[1] || 'worn naturally on the model'}`;
+        }).join('\n');
+
+        let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING — place ALL the following products on the SAME model simultaneously:\n${productDescriptions}\n\n`;
+
+        if (mannequinBase64) {
+            prompt += `MANNEQUIN: Identical to the reference model (image 1) — same face, hair, skin, pose. `;
+        } else {
+            prompt += `MANNEQUIN: Professional fashion model. `;
+        }
+        prompt += `Each piece of jewelry must be clearly visible and worn in its proper position. No overlap or obstruction between pieces. `;
+        prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
+
+        const parts: any[] = [{ text: prompt }];
+
+        if (mannequinBase64) {
+            parts.push({
+                inlineData: {
+                    mimeType: 'image/png',
+                    data: mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64
+                }
+            });
+        }
+
+        for (const product of products) {
+            const productBase64 = await fetchImageAsBase64(product.imageUrl);
+            parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
+        }
+
+        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+            contents: [{ parts }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+
+        throw new Error("Aucune image générée pour le stacking.");
     });
 };
 

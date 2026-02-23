@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { useMannequinStore } from '../stores/useMannequinStore';
 import { useProductionStore } from '../stores/useProductionStore';
 import { useAppStore } from '../stores/useAppStore';
-import { generateMannequin, generateMannequinFromReference, applyBatchRefinements } from '../services/geminiService';
+import { generateMannequin, generateMannequinFromReference, applyBatchRefinements, generateBookShot, BOOK_ANGLES } from '../services/geminiService';
 import { downloadBase64Image } from '../services/downloadService';
 import { RefinementSelections } from '../types';
 import PillButton from './ui/PillButton';
@@ -234,10 +234,19 @@ export const MannequinEngine: React.FC = () => {
     error,
     setError,
     resetAll,
+    bookImages,
+    isGeneratingBook,
+    bookProgress,
+    addBookImage,
+    setIsGeneratingBook,
+    setBookProgress,
+    clearBook,
   } = useMannequinStore();
 
   const { setMannequinImage } = useProductionStore();
   const { setActiveEngine } = useAppStore();
+
+  const [showBook, setShowBook] = useState(false);
 
   // --- Refinement selections (no auto-trigger, user clicks Apply) ---
   const [customHairColor, setCustomHairColor] = useState('#c0392b');
@@ -282,6 +291,39 @@ export const MannequinEngine: React.FC = () => {
     };
     reader.readAsDataURL(file);
   }, [setReferenceImage]);
+
+  // --- Import existing mannequin photo directly ---
+  const handleImportMannequin = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        if (currentImage) pushToHistory(currentImage);
+        setCurrentImage(reader.result);
+        clearRefinements();
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [currentImage, setCurrentImage, pushToHistory, clearRefinements]);
+
+  // --- Photo Book generation ---
+  const handleGenerateBook = useCallback(async () => {
+    if (!currentImage) return;
+    setIsGeneratingBook(true);
+    clearBook();
+    setShowBook(true);
+    setError(null);
+    try {
+      for (let i = 0; i < BOOK_ANGLES.length; i++) {
+        setBookProgress(i + 1);
+        const shot = await generateBookShot(currentImage, BOOK_ANGLES[i].prompt);
+        addBookImage(shot);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Book generation failed.');
+    } finally {
+      setIsGeneratingBook(false);
+    }
+  }, [currentImage, setIsGeneratingBook, clearBook, setError, addBookImage, setBookProgress]);
 
   // --- Generation ---
   const handleGenerate = useCallback(async () => {
@@ -352,7 +394,7 @@ export const MannequinEngine: React.FC = () => {
 
   // --- Derived state ---
   const hasImage = !!currentImage;
-  const isBusy = isGenerating || isRefining;
+  const isBusy = isGenerating || isRefining || isGeneratingBook;
   const canUndo = imageHistory.length > 0;
   const refinementDisabled = !hasImage || isBusy;
 
@@ -606,6 +648,71 @@ export const MannequinEngine: React.FC = () => {
             </div>
           )}
 
+          {/* Photo Book overlay */}
+          {showBook && (
+            <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-sm flex flex-col">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-widest text-purple-600">Photo Book</span>
+                  <h3 className="text-lg font-bold text-gray-900">Multi-Angle Studio Shoot</h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  {bookImages.length > 0 && (
+                    <button
+                      onClick={() => bookImages.forEach((img, i) => setTimeout(() => downloadBase64Image(img, `book_${BOOK_ANGLES[i]?.key || i}_${Date.now()}.png`), i * 200))}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-500 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      Download All ({bookImages.length})
+                    </button>
+                  )}
+                  <button onClick={() => setShowBook(false)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors text-lg">&times;</button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 p-4 overflow-auto">
+                <div className="grid grid-cols-2 gap-3 h-full">
+                  {BOOK_ANGLES.map((angle, i) => (
+                    <div key={angle.key} className="relative rounded-xl border-2 border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center min-h-[200px]">
+                      {bookImages[i] ? (
+                        <>
+                          <img src={bookImages[i]} alt={angle.label} className="w-full h-full object-contain" />
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-3 flex items-end justify-between">
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">{angle.label}</span>
+                            <button
+                              onClick={() => downloadBase64Image(bookImages[i], `book_${angle.key}_${Date.now()}.png`)}
+                              className="w-7 h-7 rounded-full bg-white/20 backdrop-blur text-white flex items-center justify-center hover:bg-white/40 transition-colors"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-gray-400">
+                          {isGeneratingBook && bookProgress === i + 1 ? (
+                            <>
+                              <svg className="w-8 h-8 animate-spin text-purple-600" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span className="text-xs font-medium text-purple-600 animate-pulse">Generating...</span>
+                            </>
+                          ) : isGeneratingBook && bookProgress > i + 1 ? (
+                            <span className="text-xs text-gray-400">Waiting...</span>
+                          ) : (
+                            <>
+                              <span className="text-xs font-medium uppercase tracking-wider">{angle.label}</span>
+                              <span className="text-[10px]">{isGeneratingBook ? 'Queued' : 'Pending'}</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Content states */}
           {isGenerating ? (
             <div className="flex flex-col items-center gap-4">
@@ -623,12 +730,20 @@ export const MannequinEngine: React.FC = () => {
               draggable={false}
             />
           ) : (
-            <div className="flex flex-col items-center gap-3 text-gray-400">
+            <div className="flex flex-col items-center gap-4 text-gray-400">
               {/* Placeholder person icon */}
               <svg className="w-20 h-20 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               <span className="text-sm opacity-50">Configure and generate your model</span>
+              {/* Import existing photo */}
+              <label className="flex items-center gap-2 px-5 py-2.5 rounded-full border-2 border-dashed border-gray-300 text-sm font-medium text-gray-500 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer transition-colors mt-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Or import an existing photo
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportMannequin(f); e.target.value = ''; }} />
+              </label>
             </div>
           )}
         </div>
@@ -650,6 +765,15 @@ export const MannequinEngine: React.FC = () => {
             </button>
           )}
 
+          {/* Import button */}
+          <label className="flex items-center gap-1.5 px-4 py-3 rounded-full border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Import
+            <input type="file" accept="image/*" className="hidden" onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) handleImportMannequin(f); e.target.value = ''; }} />
+          </label>
+
           {/* GENERATE button */}
           <button
             type="button"
@@ -663,6 +787,21 @@ export const MannequinEngine: React.FC = () => {
             </svg>
             {isGenerating ? 'Generating...' : referenceImage ? 'Generate from Reference' : 'Generate New Look'}
           </button>
+
+          {/* BOOK button */}
+          {hasImage && (
+            <button
+              type="button"
+              onClick={handleGenerateBook}
+              disabled={isBusy}
+              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white rounded-full px-6 py-4 font-bold text-sm transition-colors shadow-lg shadow-purple-300/30 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              {isGeneratingBook ? `Book ${bookProgress}/4...` : 'Book'}
+            </button>
+          )}
 
           {/* Status dot */}
           <div className="flex items-center gap-2 text-xs font-medium select-none">

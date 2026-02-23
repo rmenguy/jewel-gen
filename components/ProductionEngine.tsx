@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
 import { ProductionItem } from '../types';
-import { generateProductionPhoto } from '../services/geminiService';
+import { generateProductionPhoto, generateStackedProductionPhoto } from '../services/geminiService';
 import { Button } from './Button';
 
 interface ProductionEngineProps {
@@ -35,6 +35,9 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedForDownload, setSelectedForDownload] = useState<Set<string>>(new Set());
+  const [stackingMode, setStackingMode] = useState(false);
+  const [stackSelection, setStackSelection] = useState<Set<string>>(new Set());
+  const [isStacking, setIsStacking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stats = useMemo(() => {
@@ -202,6 +205,45 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
       setQueue(prev => prev.map(p => p.id === id ? { ...p, category } : p));
   };
 
+  const handleToggleStack = (id: string) => {
+    const newSet = new Set(stackSelection);
+    if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
+    setStackSelection(newSet);
+  };
+
+  const handleGenerateStacked = async () => {
+    const selectedItems = queue.filter(i => stackSelection.has(i.id));
+    if (selectedItems.length < 2) return;
+    setIsStacking(true);
+    try {
+      const products = selectedItems.map(item => ({
+        imageUrl: item.imageUrl,
+        category: item.category || '',
+        name: item.name,
+      }));
+      let effectivePrompt = artisticDirection;
+      if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
+      const resultImage = await generateStackedProductionPhoto(mannequinImage, products, effectivePrompt);
+      const stackedItem: ProductionItem = {
+        id: crypto.randomUUID(),
+        sku: `STACK-${selectedItems.map(i => i.sku).join('+')}`,
+        name: `Stacked: ${selectedItems.map(i => i.name).join(' + ')}`,
+        imageUrl: selectedItems[0].imageUrl,
+        category: 'stacked',
+        status: 'COMPLETED',
+        resultImage,
+      };
+      setQueue(prev => [...prev, stackedItem]);
+      setSelectedItemId(stackedItem.id);
+      setStackSelection(new Set());
+      setStackingMode(false);
+    } catch (err: any) {
+      alert(`Stacking failed: ${err.message}`);
+    } finally {
+      setIsStacking(false);
+    }
+  };
+
   const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
   const runnableCount = queue.filter(i => i.status === 'PENDING' || i.status === 'ERROR').length;
 
@@ -233,6 +275,9 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             DOWNLOAD 4K ({selectedForDownload.size})
                         </button>
                     )}
+                    <button onClick={() => { setStackingMode(!stackingMode); setStackSelection(new Set()); }} className={`text-[10px] px-3 py-1 rounded border transition-colors font-bold ${stackingMode ? 'bg-purple-50 border-purple-400 text-purple-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        {stackingMode ? 'Exit Stack' : 'Stack Mode'}
+                    </button>
                 </div>
             </div>
 
@@ -248,10 +293,10 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             <textarea className="w-full h-full bg-transparent text-[9px] font-mono text-gray-500 outline-none resize-none placeholder-gray-300" placeholder="SKU|Name|URL|Cat" value={productListInput} onChange={(e) => setProductListInput(e.target.value)} />
                         </div>
                         {queue.map((item) => (
-                            <div key={item.id} onClick={() => setSelectedItemId(item.id)} className={`aspect-square relative rounded-md overflow-hidden cursor-pointer border transition-all group ${selectedItemId === item.id ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-gray-200 hover:border-gray-300'} ${item.status === 'ERROR' ? 'border-red-300' : ''}`}>
-                                <div className="absolute top-1 left-1 z-20" onClick={(e) => toggleSelection(item.id, e)}>
-                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedForDownload.has(item.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white/80 border-gray-300 hover:border-indigo-400'}`}>
-                                        {selectedForDownload.has(item.id) && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+                            <div key={item.id} onClick={() => stackingMode ? handleToggleStack(item.id) : setSelectedItemId(item.id)} className={`aspect-square relative rounded-md overflow-hidden cursor-pointer border transition-all group ${stackingMode && stackSelection.has(item.id) ? 'border-purple-500 ring-2 ring-purple-400/50' : selectedItemId === item.id ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-gray-200 hover:border-gray-300'} ${item.status === 'ERROR' ? 'border-red-300' : ''}`}>
+                                <div className="absolute top-1 left-1 z-20" onClick={(e) => { e.stopPropagation(); stackingMode ? handleToggleStack(item.id) : toggleSelection(item.id, e); }}>
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${stackingMode ? (stackSelection.has(item.id) ? 'bg-purple-600 border-purple-600' : 'bg-white/80 border-gray-300 hover:border-purple-400') : (selectedForDownload.has(item.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white/80 border-gray-300 hover:border-indigo-400')}`}>
+                                        {(stackingMode ? stackSelection.has(item.id) : selectedForDownload.has(item.id)) && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
                                     </div>
                                 </div>
                                 {item.status === 'COMPLETED' && item.resultImage ? <img src={item.resultImage} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[8px] font-mono text-gray-400 break-all px-1 text-center">{item.sku}</span></div>}
@@ -265,7 +310,26 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     </div>
                 )}
             </div>
-             <div className="p-3 bg-white border-t border-gray-200">
+             <div className="p-3 bg-white border-t border-gray-200 space-y-2">
+                {stackingMode && stackSelection.size >= 2 && (
+                    <button
+                        onClick={handleGenerateStacked}
+                        disabled={isStacking}
+                        className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-purple-600 hover:bg-purple-500 text-white rounded-lg disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
+                    >
+                        {isStacking ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Stacking...
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                Stack {stackSelection.size} Items
+                            </>
+                        )}
+                    </button>
+                )}
                 <Button className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 border-none shadow-sm" onClick={startProduction} isLoading={isProcessing}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     EXECUTE BATCH {String(runnableCount).padStart(3, '0')}
@@ -328,6 +392,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         <select className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer" value={selectedItem?.category || ''} onChange={(e) => selectedItem && updateItemCategory(selectedItem.id, e.target.value)}>
                             <option value="">Auto Detect</option>
                             <option value="necklace">Collier (Necklace)</option>
+                            <option value="sautoir">Sautoir (Long Necklace)</option>
                             <option value="ring">Bague (Ring)</option>
                             <option value="earrings">Boucles (Earrings)</option>
                             <option value="bracelet">Bracelet</option>

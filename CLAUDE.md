@@ -117,3 +117,53 @@ All refinements use `refineMannequinImage()` which sends the current image + mod
 - Style (Editorial / Vintage / Film / Minimalist)
 - Lighting (Soft / Studio / Dramatic)
 - Scene Background (Minimalist Studio / Urban Loft)
+
+---
+
+## Current Implementation Plan (4 Features)
+
+### Execution Order
+1. Sautoir + Placements manquants → 2. Import photo pour refinement → 3. Stacking bijoux → 4. Photo Book
+
+### Feature 1 — Sautoir + Placements bijoux manquants
+**Files:** `services/geminiService.ts` (expand placement logic in `generateProductionPhoto()`), `components/ProductionEngine.tsx` (add "Sautoir" in category dropdown)
+
+Enrichir les prompts de placement :
+- **Sautoir** : "Long necklace hanging freely, falling to chest or waist level"
+- **Collier** : "Necklace worn close to neck, on or just below collarbone"
+- **Boucles** : "Earrings on earlobes, head angled to showcase, hair pulled back"
+- **Bracelet** : "Bracelet on wrist, forearm visible"
+- **Bague** : améliorer le prompt existant
+
+### Feature 2 — Import photo existante pour refinement
+**Files:** `components/MannequinEngine.tsx`
+
+Permettre d'uploader un mannequin existant directement dans `currentImage` → active automatiquement le panneau refinement.
+- Zone d'import dans le placeholder vide du panneau central
+- Bouton "Import" dans la barre du bas (entre Undo et Generate)
+- Handler : `FileReader.readAsDataURL()` → `pushToHistory` si image existante → `setCurrentImage`
+- Pas de changement de store nécessaire
+
+### Feature 3 — Stacking bijoux en production
+**Files:** `services/geminiService.ts` (nouvelle fonction `generateStackedProductionPhoto()`), `components/ProductionEngine.tsx` (UI stacking mode)
+
+Nouvelle fonction API : envoie mannequin + N images produit en un seul appel à `gemini-3-pro-image-preview` avec prompt "MULTIPLE JEWELRY STACKING".
+- Bouton "Stack Mode" (toggle, style purple)
+- En mode stacking : clics togglent sélection des items de la queue
+- Bouton "Stack N Items" quand >= 2 sélectionnés
+- Résultat ajouté comme nouvel item `STACK-sku1+sku2` dans la queue
+
+### Feature 4 — Photo Book (multi-angles studio)
+**Files:** `stores/useMannequinStore.ts` (état book), `services/geminiService.ts` (nouvelle `generateBookShot()` + `BOOK_ANGLES`), `components/MannequinEngine.tsx` (bouton + overlay)
+
+Store : `bookImages: string[]`, `isGeneratingBook`, `bookProgress`
+
+4 angles via `gemini-3-pro-image-preview` (image-to-image, préserve identité) :
+- Front (portrait face, regard caméra)
+- Profil Gauche 3/4
+- Profil Droit 3/4
+- Plan Large plein pied
+
+UI : bouton "Generate Book" (purple) dans barre du bas → overlay 2×2 avec progression temps réel → download individuel + "Download All"
+
+Génération séquentielle (pas parallèle) pour éviter le rate limiting.
