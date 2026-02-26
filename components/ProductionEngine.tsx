@@ -301,6 +301,22 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                 </div>
                                 {item.status === 'COMPLETED' && item.resultImage ? <img src={item.resultImage} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[8px] font-mono text-gray-400 break-all px-1 text-center">{item.sku}</span></div>}
                                 <div className="absolute top-1 right-1 z-10"><StatusDot status={item.status} /></div>
+                                {/* Per-item category selector */}
+                                <div className="absolute bottom-0 left-0 right-0 z-20" onClick={(e) => e.stopPropagation()}>
+                                    <select
+                                        className="w-full bg-black/60 text-white text-[8px] font-bold uppercase px-1 py-0.5 outline-none cursor-pointer appearance-none text-center backdrop-blur-sm"
+                                        value={item.category || ''}
+                                        onChange={(e) => updateItemCategory(item.id, e.target.value)}
+                                    >
+                                        <option value="">Auto</option>
+                                        <option value="necklace">Collier</option>
+                                        <option value="sautoir-court">Sautoir Court</option>
+                                        <option value="sautoir-long">Sautoir Long</option>
+                                        <option value="ring">Bague</option>
+                                        <option value="earrings">Boucles</option>
+                                        <option value="bracelet">Bracelet</option>
+                                    </select>
+                                </div>
                                 {item.status === 'PROCESSING' && <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center z-10 p-2 text-center">
                                     <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-1"></div>
                                     <span className="text-[7px] text-indigo-600 animate-pulse font-bold uppercase">Processing...</span>
@@ -374,7 +390,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
         </div>
 
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="mb-4">
                 <div>
                     <div className="flex justify-between items-center mb-2">
                         <label className="text-[9px] uppercase font-bold text-gray-400">Model Reference</label>
@@ -384,20 +400,6 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     <div className={`h-12 bg-gray-50 border rounded flex items-center px-2 gap-3 transition-colors ${mannequinImage ? 'border-indigo-400' : 'border-gray-200'}`}>
                         <div className="w-8 h-8 bg-gray-100 rounded overflow-hidden">{mannequinImage ? <img src={mannequinImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px]">NONE</div>}</div>
                         <span className="text-[9px] font-mono truncate text-gray-500">{mannequinImage ? 'Active_Portrait_4K.png' : 'Pending...'}</span>
-                    </div>
-                </div>
-                <div>
-                    <label className="text-[9px] uppercase font-bold text-gray-400 mb-2 block">Item Category</label>
-                    <div className="h-12 bg-gray-50 border border-gray-200 rounded flex items-center px-2">
-                        <select className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer" value={selectedItem?.category || ''} onChange={(e) => selectedItem && updateItemCategory(selectedItem.id, e.target.value)}>
-                            <option value="">Auto Detect</option>
-                            <option value="necklace">Collier (Necklace)</option>
-                            <option value="sautoir-court">Sautoir Court (Mi-poitrine)</option>
-                            <option value="sautoir-long">Sautoir Long (Nombril)</option>
-                            <option value="ring">Bague (Ring)</option>
-                            <option value="earrings">Boucles (Earrings)</option>
-                            <option value="bracelet">Bracelet</option>
-                        </select>
                     </div>
                 </div>
             </div>
