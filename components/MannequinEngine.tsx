@@ -202,6 +202,27 @@ const HAIR_STYLES: { label: string; prompt: string }[] = [
   { label: 'Bob', prompt: 'short bob haircut, chin-length' },
 ];
 
+const HAIR_CUT_REFINEMENTS: { label: string; key: string; prompt: string }[] = [
+  { label: 'Lâchés', key: 'laches', prompt: 'loose natural flowing hair' },
+  { label: 'Ondulé', key: 'ondule', prompt: 'natural undone waves with movement' },
+  { label: 'Lisse', key: 'lisse', prompt: 'sleek straight smooth hair' },
+  { label: 'Bouclé', key: 'boucle', prompt: 'defined curls with natural bounce' },
+  { label: 'Afro', key: 'afro', prompt: 'natural afro-textured hair with volume' },
+  { label: 'Chignon', key: 'chignon', prompt: 'elegant chignon bun' },
+  { label: 'Queue de cheval', key: 'queue', prompt: 'sleek ponytail' },
+  { label: 'Tressé', key: 'tresse', prompt: 'elegantly braided hair' },
+  { label: 'Pixie', key: 'pixie', prompt: 'short pixie cut cropped close' },
+  { label: 'Wavy Bob', key: 'wavy-bob', prompt: 'wavy textured bob at chin length, effortless undone waves' },
+];
+
+const HAIR_LENGTH_REFINEMENTS: { label: string; key: string; prompt: string }[] = [
+  { label: 'Très court', key: 'tres-court', prompt: 'very short pixie-length' },
+  { label: 'Court', key: 'court', prompt: 'short chin-length' },
+  { label: 'Mi-long', key: 'mi-long', prompt: 'medium shoulder-length' },
+  { label: 'Long', key: 'long', prompt: 'long chest-length' },
+  { label: 'Très long', key: 'tres-long', prompt: 'very long waist-length' },
+];
+
 const SCENE_OPTIONS: { label: string; prompt: string }[] = [
   { label: 'Minimalist Studio', prompt: 'clean minimalist white studio with soft shadows, concrete floor, seamless backdrop' },
   { label: 'Urban Loft', prompt: 'industrial urban loft with exposed brick walls, large windows, warm natural light' },
@@ -253,6 +274,8 @@ export const MannequinEngine: React.FC = () => {
   const [refHairColor, setRefHairColor] = useState<string | null>(null);
   const [refHairHex, setRefHairHex] = useState<string | null>(null);
   const [refHairStyle, setRefHairStyle] = useState<string | null>(null);
+  const [refHairCut, setRefHairCut] = useState<string | null>(null);
+  const [refHairLength, setRefHairLength] = useState<string | null>(null);
   const [refSkin, setRefSkin] = useState(85);
   const [refSkinDirty, setRefSkinDirty] = useState(false);
   const [refMakeup, setRefMakeup] = useState<string | null>(null);
@@ -264,8 +287,8 @@ export const MannequinEngine: React.FC = () => {
 
   // --- Count pending refinements ---
   const pendingCount = [
-    refHairColor, refHairStyle, refMakeup, refAccessory,
-    refStyle, refLighting, refScene, refOutfit,
+    refHairColor, refHairStyle, refHairCut, refHairLength,
+    refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit,
   ].filter(v => v != null).length + (refSkinDirty ? 1 : 0);
 
   // --- Clear all refinement selections ---
@@ -273,6 +296,8 @@ export const MannequinEngine: React.FC = () => {
     setRefHairColor(null);
     setRefHairHex(null);
     setRefHairStyle(null);
+    setRefHairCut(null);
+    setRefHairLength(null);
     setRefSkin(85);
     setRefSkinDirty(false);
     setRefMakeup(null);
@@ -352,6 +377,17 @@ export const MannequinEngine: React.FC = () => {
     const selections: RefinementSelections = {};
     if (refHairColor) selections.hairColor = refHairColor;
     if (refHairStyle) selections.hairStyle = refHairStyle;
+    if (refHairCut) {
+      const cut = HAIR_CUT_REFINEMENTS.find(c => c.key === refHairCut);
+      selections.hairStyle = [
+        cut?.prompt,
+        refHairLength ? HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength)?.prompt : null,
+        selections.hairStyle,
+      ].filter(Boolean).join(', ');
+    } else if (refHairLength) {
+      const len = HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength);
+      selections.hairStyle = [selections.hairStyle, len?.prompt].filter(Boolean).join(', ');
+    }
     if (refSkinDirty) selections.skinRetouching = refSkin;
     if (refMakeup) selections.makeup = refMakeup;
     if (refAccessory && refAccessory !== 'None') selections.accessory = refAccessory;
@@ -376,7 +412,7 @@ export const MannequinEngine: React.FC = () => {
       setIsRefining(false);
     }
   }, [currentImage, pendingCount, pushToHistory, setCurrentImage, setError, setIsRefining, undo, clearRefinements,
-      refHairColor, refHairStyle, refSkin, refSkinDirty, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
+      refHairColor, refHairStyle, refHairCut, refHairLength, refSkin, refSkinDirty, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
 
   // --- Export ---
   const handleExport = useCallback(() => {
@@ -484,6 +520,53 @@ export const MannequinEngine: React.FC = () => {
                   label={a}
                   active={criteria.age === a}
                   onClick={() => setCriteria({ age: a })}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* COUPE (hair cut) */}
+          <div>
+            <SectionLabel>Coupe</SectionLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: 'laches', label: 'Lâchés' },
+                { key: 'ondule', label: 'Ondulé' },
+                { key: 'lisse', label: 'Lisse' },
+                { key: 'boucle', label: 'Bouclé' },
+                { key: 'afro', label: 'Afro' },
+                { key: 'chignon', label: 'Chignon' },
+                { key: 'queue', label: 'Queue de cheval' },
+                { key: 'tresse', label: 'Tressé' },
+                { key: 'pixie', label: 'Pixie' },
+                { key: 'wavy-bob', label: 'Wavy Bob' },
+              ] as const).map(({ key, label }) => (
+                <PillButton
+                  key={key}
+                  label={label}
+                  active={criteria.hairCut === key}
+                  onClick={() => setCriteria({ hairCut: key })}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* LONGUEUR (hair length) */}
+          <div>
+            <SectionLabel>Longueur</SectionLabel>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { key: 'tres-court', label: 'Très court' },
+                { key: 'court', label: 'Court' },
+                { key: 'mi-long', label: 'Mi-long' },
+                { key: 'long', label: 'Long' },
+                { key: 'tres-long', label: 'Très long' },
+              ] as const).map(({ key, label }) => (
+                <PillButton
+                  key={key}
+                  label={label}
+                  active={criteria.hairLength === key}
+                  onClick={() => setCriteria({ hairLength: key })}
                 />
               ))}
             </div>
@@ -895,6 +978,36 @@ export const MannequinEngine: React.FC = () => {
                   />
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* HAIR CUT (refinement) */}
+          <div>
+            <SectionLabel>Coupe</SectionLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {HAIR_CUT_REFINEMENTS.map((hc) => (
+                <PillButton
+                  key={hc.key}
+                  label={hc.label}
+                  active={refHairCut === hc.key}
+                  onClick={() => setRefHairCut(refHairCut === hc.key ? null : hc.key)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* HAIR LENGTH (refinement) */}
+          <div>
+            <SectionLabel>Longueur</SectionLabel>
+            <div className="grid grid-cols-3 gap-2">
+              {HAIR_LENGTH_REFINEMENTS.map((hl) => (
+                <PillButton
+                  key={hl.key}
+                  label={hl.label}
+                  active={refHairLength === hl.key}
+                  onClick={() => setRefHairLength(refHairLength === hl.key ? null : hl.key)}
+                />
+              ))}
             </div>
           </div>
 
