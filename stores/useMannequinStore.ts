@@ -10,6 +10,8 @@ const DEFAULT_CRITERIA: MannequinCriteria = {
   morphology: 'Athlétique',
   hairColor: 'Brun',
   hairStyle: 'Lachés',
+  hairCut: 'laches',
+  hairLength: 'mi-long',
   vibe: 'Minimalist',
   skinTexture: 'Natural',
   makeup: 'Natural',

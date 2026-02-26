@@ -207,6 +207,27 @@ export const generateMannequin = async (criteria: MannequinCriteria): Promise<st
         'dramatic': 'dramatic chiaroscuro lighting, deep shadows on one side, cinematic and moody',
     };
 
+    const hairCutMap: Record<string, string> = {
+        'laches': 'Hair worn loose and natural, flowing freely',
+        'ondule': 'Natural undone waves with movement and texture',
+        'lisse': 'Sleek straight hair, smooth and polished',
+        'boucle': 'Defined curls with natural bounce and volume',
+        'afro': 'Natural afro-textured hair with full volume',
+        'chignon': 'Hair pulled back into an elegant chignon bun',
+        'queue': 'Hair tied in a sleek ponytail',
+        'tresse': 'Hair styled in braids',
+        'pixie': 'Short pixie cut, cropped close to the head',
+        'wavy-bob': 'Wavy textured bob, effortless undone waves with natural movement',
+    };
+
+    const hairLengthMap: Record<string, string> = {
+        'tres-court': 'very short, pixie-length',
+        'court': 'short, chin-length',
+        'mi-long': 'medium, shoulder-length',
+        'long': 'long, chest-length',
+        'tres-long': 'very long, waist-length',
+    };
+
     // Map ethnicity codes to descriptive text
     const ethnicityMap: Record<string, string> = {
         'european': 'European/Caucasian',
@@ -237,7 +258,7 @@ export const generateMannequin = async (criteria: MannequinCriteria): Promise<st
 
     const basePrompt = `EDITORIAL FASHION PORTRAIT shot on medium format film camera. RAW UNPROCESSED LOOK.
 SUBJECT: ${criteria.gender}, ${criteria.age} years old, ${ethnicityPrompt} ethnicity.
-HAIR: ${criteria.hairColor}, ${criteria.hairStyle}.
+HAIR: ${criteria.hairColor}, ${hairCutMap[criteria.hairCut] || 'Hair worn loose and natural'}, ${hairLengthMap[criteria.hairLength] || 'medium, shoulder-length'}.
 ${posePrompt} Direct eye contact with camera.
 MOOD: ${vibePrompt}.${lightingPrompt ? `\nLIGHTING: ${lightingPrompt}.` : ''}
 SKIN (CRITICAL): ${skinPrompt}. Photorealistic skin with natural texture — visible pores and subtle skin grain, healthy even complexion. NO blemishes, NO red patches, NO skin conditions. The skin must look like a real healthy person in a professional fashion editorial: real texture but clear, healthy and flattering. Think Vogue/Elle editorial photography standards.

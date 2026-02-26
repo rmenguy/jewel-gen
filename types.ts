@@ -30,6 +30,8 @@ export interface MannequinCriteria {
   morphology: string;
   hairColor: string;
   hairStyle: string;
+  hairCut: string;
+  hairLength: string;
   vibe: string;
   skinTexture: string;
   makeup: string;
