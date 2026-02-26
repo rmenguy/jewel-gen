@@ -193,14 +193,6 @@ const HAIR_COLORS: { label: string; hex: string }[] = [
   { label: 'Blonde', hex: '#d4b896' },
 ];
 
-const HAIR_STYLES: { label: string; prompt: string }[] = [
-  { label: 'Straight', prompt: 'straight sleek smooth hair' },
-  { label: 'Wavy', prompt: 'wavy flowing hair with natural waves' },
-  { label: 'Curly', prompt: 'curly voluminous hair with defined curls' },
-  { label: 'Tied Up', prompt: 'hair tied up in a neat high ponytail' },
-  { label: 'Braids', prompt: 'elegantly braided hair' },
-  { label: 'Bob', prompt: 'short bob haircut, chin-length' },
-];
 
 const HAIR_CUT_REFINEMENTS: { label: string; key: string; prompt: string }[] = [
   { label: 'Lâchés', key: 'laches', prompt: 'loose natural flowing hair' },
@@ -273,9 +265,9 @@ export const MannequinEngine: React.FC = () => {
   const [customHairColor, setCustomHairColor] = useState('#c0392b');
   const [refHairColor, setRefHairColor] = useState<string | null>(null);
   const [refHairHex, setRefHairHex] = useState<string | null>(null);
-  const [refHairStyle, setRefHairStyle] = useState<string | null>(null);
   const [refHairCut, setRefHairCut] = useState<string | null>(null);
   const [refHairLength, setRefHairLength] = useState<string | null>(null);
+  const [refHairPhoto, setRefHairPhoto] = useState<string | null>(null);
   const [refSkin, setRefSkin] = useState(85);
   const [refSkinDirty, setRefSkinDirty] = useState(false);
   const [refMakeup, setRefMakeup] = useState<string | null>(null);
@@ -287,7 +279,7 @@ export const MannequinEngine: React.FC = () => {
 
   // --- Count pending refinements ---
   const pendingCount = [
-    refHairColor, refHairStyle, refHairCut, refHairLength,
+    refHairColor, refHairCut, refHairLength, refHairPhoto,
     refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit,
   ].filter(v => v != null).length + (refSkinDirty ? 1 : 0);
 
@@ -295,8 +287,8 @@ export const MannequinEngine: React.FC = () => {
   const clearRefinements = useCallback(() => {
     setRefHairColor(null);
     setRefHairHex(null);
-    setRefHairStyle(null);
     setRefHairCut(null);
+    setRefHairPhoto(null);
     setRefHairLength(null);
     setRefSkin(85);
     setRefSkinDirty(false);
@@ -376,18 +368,17 @@ export const MannequinEngine: React.FC = () => {
 
     const selections: RefinementSelections = {};
     if (refHairColor) selections.hairColor = refHairColor;
-    if (refHairStyle) selections.hairStyle = refHairStyle;
     if (refHairCut) {
       const cut = HAIR_CUT_REFINEMENTS.find(c => c.key === refHairCut);
       selections.hairStyle = [
         cut?.prompt,
         refHairLength ? HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength)?.prompt : null,
-        selections.hairStyle,
       ].filter(Boolean).join(', ');
     } else if (refHairLength) {
       const len = HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength);
-      selections.hairStyle = [selections.hairStyle, len?.prompt].filter(Boolean).join(', ');
+      selections.hairStyle = len?.prompt;
     }
+    if (refHairPhoto) selections.hairReferenceBase64 = refHairPhoto;
     if (refSkinDirty) selections.skinRetouching = refSkin;
     if (refMakeup) selections.makeup = refMakeup;
     if (refAccessory && refAccessory !== 'None') selections.accessory = refAccessory;
@@ -412,7 +403,7 @@ export const MannequinEngine: React.FC = () => {
       setIsRefining(false);
     }
   }, [currentImage, pendingCount, pushToHistory, setCurrentImage, setError, setIsRefining, undo, clearRefinements,
-      refHairColor, refHairStyle, refHairCut, refHairLength, refSkin, refSkinDirty, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
+      refHairColor, refHairCut, refHairLength, refHairPhoto, refSkin, refSkinDirty, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
 
   // --- Export ---
   const handleExport = useCallback(() => {
@@ -1011,19 +1002,37 @@ export const MannequinEngine: React.FC = () => {
             </div>
           </div>
 
-          {/* HAIRSTYLE */}
+          {/* HAIR REFERENCE PHOTO */}
           <div>
-            <SectionLabel>Hairstyle</SectionLabel>
-            <div className="grid grid-cols-3 gap-2">
-              {HAIR_STYLES.map((hs) => (
-                <PillButton
-                  key={hs.label}
-                  label={hs.label}
-                  active={refHairStyle === hs.prompt}
-                  onClick={() => setRefHairStyle(refHairStyle === hs.prompt ? null : hs.prompt)}
-                />
-              ))}
-            </div>
+            <SectionLabel>Référence Coupe</SectionLabel>
+            {refHairPhoto ? (
+              <div className="relative group">
+                <img src={refHairPhoto} alt="Hair reference" className="w-full h-24 object-cover rounded-lg border border-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setRefHairPhoto(null)}
+                  className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Photo de référence
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => { if (typeof reader.result === 'string') setRefHairPhoto(reader.result); };
+                    reader.readAsDataURL(f);
+                  }
+                  e.target.value = '';
+                }} />
+              </label>
+            )}
           </div>
 
           {/* SKIN RETOUCHING */}

@@ -748,6 +748,7 @@ export const applyBatchRefinements = async (
     const changes: string[] = [];
     if (selections.hairColor) changes.push(`Change hair color to ${selections.hairColor}`);
     if (selections.hairStyle) changes.push(`Change hairstyle to ${selections.hairStyle}`);
+    if (selections.hairReferenceBase64) changes.push(`Apply the exact haircut and hairstyle shown in the reference photo (additional image provided) to the model. Match the cut, length, texture and styling precisely`);
     if (selections.skinRetouching !== undefined) changes.push(`Set skin retouching to ${selections.skinRetouching}%`);
     if (selections.makeup) changes.push(`Apply ${selections.makeup} makeup style`);
     if (selections.accessory) changes.push(`Add ${selections.accessory}`);
@@ -778,6 +779,13 @@ export const applyBatchRefinements = async (
             ? selections.outfitBase64.split(',')[1]
             : selections.outfitBase64;
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: outfitData } });
+    }
+
+    if (selections.hairReferenceBase64) {
+        const hairData = selections.hairReferenceBase64.includes('base64,')
+            ? selections.hairReferenceBase64.split(',')[1]
+            : selections.hairReferenceBase64;
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: hairData } });
     }
 
     // Try multiple models — some may not be available for all API keys
