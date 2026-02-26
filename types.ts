@@ -108,6 +108,7 @@ export type RefinementType =
 export interface RefinementSelections {
   hairColor?: string;
   hairStyle?: string;
+  hairLengthAdjust?: string;
   hairReferenceBase64?: string;
   skinRetouching?: number;
   makeup?: string;

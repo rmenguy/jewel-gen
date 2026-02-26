@@ -328,12 +328,12 @@ export const MannequinEngine: React.FC = () => {
     }
     if (refHairLength) {
       const lengthMap: Record<string, string> = {
-        'much-shorter': 'Make the hair much shorter while keeping the exact same haircut style and texture',
-        'shorter': 'Make the hair slightly shorter while keeping the exact same haircut style and texture',
-        'longer': 'Make the hair slightly longer while keeping the exact same haircut style and texture',
-        'much-longer': 'Make the hair much longer while keeping the exact same haircut style and texture',
+        'much-shorter': 'Make the hair MUCH shorter (remove significant length) while keeping the exact same haircut style, texture and shape. The hair should be visibly shorter than before.',
+        'shorter': 'Make the hair noticeably shorter (reduce length by a few inches) while keeping the exact same haircut style, texture and shape.',
+        'longer': 'Make the hair noticeably longer (add a few inches of length) while keeping the exact same haircut style, texture and shape.',
+        'much-longer': 'Make the hair MUCH longer (add significant length) while keeping the exact same haircut style, texture and shape. The hair should be visibly longer than before.',
       };
-      selections.hairStyle = [selections.hairStyle, lengthMap[refHairLength]].filter(Boolean).join('. ');
+      selections.hairLengthAdjust = lengthMap[refHairLength];
     }
     if (refHairPhoto) selections.hairReferenceBase64 = refHairPhoto;
     if (refMakeup) selections.makeup = refMakeup;

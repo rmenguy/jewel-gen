@@ -748,6 +748,7 @@ export const applyBatchRefinements = async (
     const changes: string[] = [];
     if (selections.hairColor) changes.push(`Change hair color to ${selections.hairColor}`);
     if (selections.hairStyle) changes.push(`Change hairstyle to ${selections.hairStyle}`);
+    if (selections.hairLengthAdjust) changes.push(selections.hairLengthAdjust);
     if (selections.hairReferenceBase64) changes.push(`Apply the exact haircut and hairstyle shown in the reference photo (additional image provided) to the model. Match the cut, length, texture and styling precisely`);
     if (selections.skinRetouching !== undefined) changes.push(`Set skin retouching to ${selections.skinRetouching}%`);
     if (selections.makeup) changes.push(`Apply ${selections.makeup} makeup style`);
