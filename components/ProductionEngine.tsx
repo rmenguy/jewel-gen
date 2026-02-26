@@ -392,7 +392,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         <select className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer" value={selectedItem?.category || ''} onChange={(e) => selectedItem && updateItemCategory(selectedItem.id, e.target.value)}>
                             <option value="">Auto Detect</option>
                             <option value="necklace">Collier (Necklace)</option>
-                            <option value="sautoir">Sautoir (Long Necklace)</option>
+                            <option value="sautoir-court">Sautoir Court (Mi-poitrine)</option>
+                            <option value="sautoir-long">Sautoir Long (Nombril)</option>
                             <option value="ring">Bague (Ring)</option>
                             <option value="earrings">Boucles (Earrings)</option>
                             <option value="bracelet">Bracelet</option>

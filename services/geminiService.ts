@@ -527,8 +527,10 @@ export const generateProductionPhoto = async (
         }
 
         const categoryLower = category.toLowerCase();
-        if (categoryLower.includes('sautoir')) {
-            prompt += `PLACEMENT: Long necklace (sautoir) hanging freely from the neck, falling to the chest or waist level. The chain/pendant must drape naturally down the torso with visible length. NOT a short necklace — this is a long sautoir. `;
+        if (categoryLower.includes('sautoir-long')) {
+            prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
+        } else if (categoryLower.includes('sautoir')) {
+            prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
         } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
             prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
         } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
@@ -588,7 +590,9 @@ export const generateStackedProductionPhoto = async (
 ): Promise<string> => {
     return withRetry(async () => {
         const placementMap: Record<string, string> = {
-            'sautoir': 'long sautoir necklace hanging to the chest or waist',
+            'sautoir-long': 'very long sautoir necklace hanging to navel/belly level, maximum drape length',
+            'sautoir-court': 'sautoir necklace hanging to mid-chest/sternum level, medium-long drape',
+            'sautoir': 'sautoir necklace hanging to mid-chest/sternum level',
             'necklace': 'necklace worn close to the neck on the collarbone',
             'collier': 'necklace worn close to the neck on the collarbone',
             'ring': 'ring worn on the finger',
