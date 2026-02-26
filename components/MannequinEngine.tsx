@@ -44,48 +44,6 @@ const ColorSwatch: React.FC<{
   />
 );
 
-/** Range slider for post-generation refinement (e.g. skin retouching) */
-const RangeSlider: React.FC<{
-  value: number;
-  onChange: (v: number) => void;
-  disabled?: boolean;
-  label?: string;
-}> = ({ value, onChange, disabled, label }) => (
-  <div className="w-full space-y-1">
-    <div className="flex justify-between items-center">
-      {label && <span className="text-xs text-gray-400">{label}</span>}
-      <span className="text-xs font-medium text-gray-700 tabular-nums">{value}%</span>
-    </div>
-    <input
-      type="range"
-      min={0}
-      max={100}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="w-full h-2 rounded-full appearance-none cursor-pointer accent-indigo-600 bg-gray-200
-        disabled:opacity-40 disabled:cursor-not-allowed
-        [&::-webkit-slider-thumb]:appearance-none
-        [&::-webkit-slider-thumb]:w-4
-        [&::-webkit-slider-thumb]:h-4
-        [&::-webkit-slider-thumb]:rounded-full
-        [&::-webkit-slider-thumb]:bg-indigo-600
-        [&::-webkit-slider-thumb]:shadow-md
-        [&::-webkit-slider-thumb]:cursor-pointer
-        [&::-webkit-slider-thumb]:transition-transform
-        [&::-webkit-slider-thumb]:hover:scale-110
-        [&::-moz-range-thumb]:w-4
-        [&::-moz-range-thumb]:h-4
-        [&::-moz-range-thumb]:rounded-full
-        [&::-moz-range-thumb]:bg-indigo-600
-        [&::-moz-range-thumb]:border-0
-        [&::-moz-range-thumb]:shadow-md
-        [&::-moz-range-thumb]:cursor-pointer
-      "
-    />
-  </div>
-);
-
 /** Drop zone for garment / outfit swap */
 const DropZone: React.FC<{
   onDrop: (base64: string) => void;
@@ -268,8 +226,6 @@ export const MannequinEngine: React.FC = () => {
   const [refHairCut, setRefHairCut] = useState<string | null>(null);
   const [refHairLength, setRefHairLength] = useState<string | null>(null);
   const [refHairPhoto, setRefHairPhoto] = useState<string | null>(null);
-  const [refSkin, setRefSkin] = useState(85);
-  const [refSkinDirty, setRefSkinDirty] = useState(false);
   const [refMakeup, setRefMakeup] = useState<string | null>(null);
   const [refAccessory, setRefAccessory] = useState<string | null>(null);
   const [refStyle, setRefStyle] = useState<string | null>(null);
@@ -281,7 +237,7 @@ export const MannequinEngine: React.FC = () => {
   const pendingCount = [
     refHairColor, refHairCut, refHairLength, refHairPhoto,
     refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit,
-  ].filter(v => v != null).length + (refSkinDirty ? 1 : 0);
+  ].filter(v => v != null).length;
 
   // --- Clear all refinement selections ---
   const clearRefinements = useCallback(() => {
@@ -290,8 +246,6 @@ export const MannequinEngine: React.FC = () => {
     setRefHairCut(null);
     setRefHairPhoto(null);
     setRefHairLength(null);
-    setRefSkin(85);
-    setRefSkinDirty(false);
     setRefMakeup(null);
     setRefAccessory(null);
     setRefStyle(null);
@@ -370,16 +324,18 @@ export const MannequinEngine: React.FC = () => {
     if (refHairColor) selections.hairColor = refHairColor;
     if (refHairCut) {
       const cut = HAIR_CUT_REFINEMENTS.find(c => c.key === refHairCut);
-      selections.hairStyle = [
-        cut?.prompt,
-        refHairLength ? HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength)?.prompt : null,
-      ].filter(Boolean).join(', ');
-    } else if (refHairLength) {
-      const len = HAIR_LENGTH_REFINEMENTS.find(l => l.key === refHairLength);
-      selections.hairStyle = len?.prompt;
+      selections.hairStyle = cut?.prompt;
+    }
+    if (refHairLength) {
+      const lengthMap: Record<string, string> = {
+        'much-shorter': 'Make the hair much shorter while keeping the exact same haircut style and texture',
+        'shorter': 'Make the hair slightly shorter while keeping the exact same haircut style and texture',
+        'longer': 'Make the hair slightly longer while keeping the exact same haircut style and texture',
+        'much-longer': 'Make the hair much longer while keeping the exact same haircut style and texture',
+      };
+      selections.hairStyle = [selections.hairStyle, lengthMap[refHairLength]].filter(Boolean).join('. ');
     }
     if (refHairPhoto) selections.hairReferenceBase64 = refHairPhoto;
-    if (refSkinDirty) selections.skinRetouching = refSkin;
     if (refMakeup) selections.makeup = refMakeup;
     if (refAccessory && refAccessory !== 'None') selections.accessory = refAccessory;
     if (refStyle) selections.style = refStyle;
@@ -403,7 +359,7 @@ export const MannequinEngine: React.FC = () => {
       setIsRefining(false);
     }
   }, [currentImage, pendingCount, pushToHistory, setCurrentImage, setError, setIsRefining, undo, clearRefinements,
-      refHairColor, refHairCut, refHairLength, refHairPhoto, refSkin, refSkinDirty, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
+      refHairColor, refHairCut, refHairLength, refHairPhoto, refMakeup, refAccessory, refStyle, refLighting, refScene, refOutfit]);
 
   // --- Export ---
   const handleExport = useCallback(() => {
@@ -987,16 +943,21 @@ export const MannequinEngine: React.FC = () => {
             </div>
           </div>
 
-          {/* HAIR LENGTH (refinement) */}
+          {/* HAIR LENGTH ADJUSTMENT (relative) */}
           <div>
-            <SectionLabel>Longueur</SectionLabel>
-            <div className="grid grid-cols-3 gap-2">
-              {HAIR_LENGTH_REFINEMENTS.map((hl) => (
+            <SectionLabel>Ajuster la longueur</SectionLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: 'much-shorter', label: 'Beaucoup plus court' },
+                { key: 'shorter', label: 'Plus court' },
+                { key: 'longer', label: 'Plus long' },
+                { key: 'much-longer', label: 'Beaucoup plus long' },
+              ] as const).map(({ key, label }) => (
                 <PillButton
-                  key={hl.key}
-                  label={hl.label}
-                  active={refHairLength === hl.key}
-                  onClick={() => setRefHairLength(refHairLength === hl.key ? null : hl.key)}
+                  key={key}
+                  label={label}
+                  active={refHairLength === key}
+                  onClick={() => setRefHairLength(refHairLength === key ? null : key)}
                 />
               ))}
             </div>
@@ -1033,16 +994,6 @@ export const MannequinEngine: React.FC = () => {
                 }} />
               </label>
             )}
-          </div>
-
-          {/* SKIN RETOUCHING */}
-          <div>
-            <SectionLabel>Skin Retouching</SectionLabel>
-            <RangeSlider
-              value={refSkin}
-              onChange={(v) => { setRefSkin(v); setRefSkinDirty(true); }}
-              disabled={refinementDisabled}
-            />
           </div>
 
           {/* MAKEUP */}
