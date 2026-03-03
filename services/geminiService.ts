@@ -671,6 +671,9 @@ export const generateProductionPhoto = async (
           contents: [{ parts }],
           generationConfig: {
             responseModalities: ['IMAGE', 'TEXT'],
+            imageConfig: {
+              imageSize: '4K',
+            },
           }
         });
 
@@ -703,8 +706,8 @@ export const generateStackedProductionPhoto = async (
             'collier': 'necklace worn close to the neck on the collarbone',
             'ring': 'ring worn on the finger',
             'bague': 'ring worn on the finger',
-            'earrings': 'earrings attached to earlobes, clearly visible',
-            'boucles': 'earrings attached to earlobes, clearly visible',
+            'earrings': 'earring worn on the ear — if multiple earrings are stacked, place each at a DIFFERENT position on the SAME ear: first on the lobe, second on the upper lobe/helix, third on the tragus or conch. Each earring must be clearly distinct and separately visible',
+            'boucles': 'earring worn on the ear — if multiple earrings are stacked, place each at a DIFFERENT position on the SAME ear: first on the lobe, second on the upper lobe/helix, third on the tragus or conch. Each earring must be clearly distinct and separately visible',
             'bracelet': 'bracelet worn on the wrist',
         };
 
@@ -722,6 +725,15 @@ export const generateStackedProductionPhoto = async (
             prompt += `MANNEQUIN: Professional fashion model. `;
         }
         prompt += `Each piece of jewelry must be clearly visible and worn in its proper position. No overlap or obstruction between pieces. `;
+
+        const earringCount = products.filter(p => {
+            const cat = (p.category || p.name || '').toLowerCase();
+            return cat.includes('boucle') || cat.includes('earring');
+        }).length;
+        if (earringCount >= 2) {
+            prompt += `EARRING STACKING: ${earringCount} earrings must be placed on the SAME ear at DIFFERENT piercing positions (lobe, upper lobe, helix, tragus). Each earring is a separate piece — do NOT merge them. Show them stacked vertically along the ear. `;
+        }
+
         prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
 
         const parts: any[] = [{ text: prompt }];
@@ -742,7 +754,12 @@ export const generateStackedProductionPhoto = async (
 
         const response = await callGeminiAPI('gemini-3-pro-image-preview', {
             contents: [{ parts }],
-            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+            generationConfig: {
+                responseModalities: ['IMAGE', 'TEXT'],
+                imageConfig: {
+                    imageSize: '4K',
+                },
+            }
         });
 
         for (const part of response.candidates?.[0]?.content?.parts || []) {
