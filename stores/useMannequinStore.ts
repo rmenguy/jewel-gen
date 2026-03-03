@@ -30,6 +30,9 @@ interface MannequinStore {
   imageHistory: string[];
   error: string | null;
 
+  // Mode libre override params
+  overrideParams: string[];
+
   // Photo Book state
   bookImages: string[];
   isGeneratingBook: boolean;
@@ -44,6 +47,10 @@ interface MannequinStore {
   pushToHistory: (img: string) => void;
   undo: () => void;
   resetAll: () => void;
+
+  // Mode libre override actions
+  toggleOverrideParam: (param: string) => void;
+  clearOverrideParams: () => void;
 
   // Photo Book actions
   addBookImage: (img: string) => void;
@@ -60,6 +67,8 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
   isRefining: false,
   imageHistory: [],
   error: null,
+
+  overrideParams: [],
 
   bookImages: [],
   isGeneratingBook: false,
@@ -86,6 +95,14 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
     set({ currentImage: previous, imageHistory: rest });
   },
 
+  toggleOverrideParam: (param) =>
+    set((state) => ({
+      overrideParams: state.overrideParams.includes(param)
+        ? state.overrideParams.filter((p) => p !== param)
+        : [...state.overrideParams, param],
+    })),
+  clearOverrideParams: () => set({ overrideParams: [] }),
+
   addBookImage: (img) =>
     set((state) => ({ bookImages: [...state.bookImages, img] })),
   setIsGeneratingBook: (v) => set({ isGeneratingBook: v }),
@@ -99,6 +116,7 @@ export const useMannequinStore = create<MannequinStore>((set, get) => ({
       referenceImage: null,
       imageHistory: [],
       error: null,
+      overrideParams: [],
       bookImages: [],
       bookProgress: 0,
     }),
