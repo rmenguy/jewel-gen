@@ -20,6 +20,43 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   </span>
 );
 
+/** Wraps a parameter section with mode libre override toggle */
+const ParamSection: React.FC<{
+  paramKey: string;
+  label: string;
+  isModeLibre: boolean;
+  isOverridden: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = ({ paramKey, label, isModeLibre, isOverridden, onToggle, children }) => (
+  <div className={`relative transition-opacity duration-200 ${isModeLibre && !isOverridden ? 'opacity-40' : ''}`}>
+    <div className="flex items-center justify-between mb-2">
+      <span className="block text-xs font-semibold uppercase tracking-wider text-gray-500 select-none">
+        {label}
+      </span>
+      {isModeLibre && (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${
+            isOverridden
+              ? 'bg-indigo-100 text-indigo-600 border border-indigo-300'
+              : 'bg-gray-100 text-gray-400 border border-gray-200 hover:border-indigo-300 hover:text-indigo-500'
+          }`}
+          title={isOverridden ? 'Ce paramètre sera inclus dans la génération' : 'Cliquer pour forcer ce paramètre'}
+        >
+          {isOverridden ? 'Actif' : 'Ignoré'}
+        </button>
+      )}
+    </div>
+    {isModeLibre && !isOverridden ? (
+      <div className="pointer-events-none">{children}</div>
+    ) : (
+      children
+    )}
+  </div>
+);
+
 /** A color swatch circle for hair tone selection */
 const ColorSwatch: React.FC<{
   color: string;
@@ -214,6 +251,12 @@ export const MannequinEngine: React.FC = () => {
     clearBook,
   } = useMannequinStore();
 
+  const overrideParams = useMannequinStore(s => s.overrideParams);
+  const toggleOverrideParam = useMannequinStore(s => s.toggleOverrideParam);
+  const clearOverrideParams = useMannequinStore(s => s.clearOverrideParams);
+
+  const isModeLibre = !!(referenceImage || criteria.customPrompt?.trim());
+
   const { setMannequinImage } = useProductionStore();
   const { setActiveEngine } = useAppStore();
 
@@ -301,9 +344,10 @@ export const MannequinEngine: React.FC = () => {
     setIsGenerating(true);
     setError(null);
     try {
+      const effectiveOverrides = isModeLibre ? overrideParams : undefined;
       const base64Image = referenceImage
-        ? await generateMannequinFromReference(referenceImage, criteria)
-        : await generateMannequin(criteria);
+        ? await generateMannequinFromReference(referenceImage, criteria, effectiveOverrides)
+        : await generateMannequin(criteria, effectiveOverrides);
       setCurrentImage(base64Image);
       clearRefinements();
     } catch (err: any) {
@@ -311,7 +355,7 @@ export const MannequinEngine: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [criteria, referenceImage, setCurrentImage, setIsGenerating, setError, clearRefinements]);
+  }, [criteria, referenceImage, isModeLibre, overrideParams, setCurrentImage, setIsGenerating, setError, clearRefinements]);
 
   // --- Apply all pending refinements at once ---
   const handleApplyRefinements = useCallback(async () => {
@@ -400,6 +444,31 @@ export const MannequinEngine: React.FC = () => {
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-7">
+          {/* MODE LIBRE BANNER */}
+          {isModeLibre && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                  Mode libre actif
+                </span>
+              </div>
+              <p className="text-[10px] text-indigo-500/80 leading-relaxed">
+                {referenceImage ? 'La photo de référence guide le style.' : 'Le prompt libre guide la génération.'}
+                {' '}Paramètres ignorés — cliquez "Ignoré" pour forcer.
+              </p>
+              {overrideParams.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearOverrideParams}
+                  className="text-[9px] text-indigo-400 hover:text-indigo-600 mt-1.5 underline"
+                >
+                  Tout désactiver ({overrideParams.length} actifs)
+                </button>
+              )}
+            </div>
+          )}
+
           {/* REFERENCE PHOTO */}
           <div>
             <SectionLabel>Photo de référence</SectionLabel>
@@ -436,8 +505,7 @@ export const MannequinEngine: React.FC = () => {
           </div>
 
           {/* MODEL ETHNICITY */}
-          <div>
-            <SectionLabel>Model Ethnicity</SectionLabel>
+          <ParamSection paramKey="ethnicity" label="Model Ethnicity" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('ethnicity')} onToggle={() => toggleOverrideParam('ethnicity')}>
             <div className="grid grid-cols-2 gap-2">
               {([
                 { key: 'european', label: 'European' },
@@ -455,11 +523,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* AGE */}
-          <div>
-            <SectionLabel>Age</SectionLabel>
+          <ParamSection paramKey="age" label="Age" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('age')} onToggle={() => toggleOverrideParam('age')}>
             <div className="grid grid-cols-3 gap-2">
               {(['20', '25', '30', '38', '45', '55'] as const).map((a) => (
                 <PillButton
@@ -470,11 +537,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* COUPE (hair cut) */}
-          <div>
-            <SectionLabel>Coupe</SectionLabel>
+          <ParamSection paramKey="hair" label="Coupe" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('hair')} onToggle={() => toggleOverrideParam('hair')}>
             <div className="grid grid-cols-2 gap-2">
               {([
                 { key: 'laches', label: 'Lâchés' },
@@ -496,11 +562,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* LONGUEUR (hair length) */}
-          <div>
-            <SectionLabel>Longueur</SectionLabel>
+          <ParamSection paramKey="hair" label="Longueur" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('hair')} onToggle={() => toggleOverrideParam('hair')}>
             <div className="grid grid-cols-3 gap-2">
               {([
                 { key: 'tres-court', label: 'Très court' },
@@ -517,11 +582,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* AESTHETIC / VIBE */}
-          <div>
-            <SectionLabel>Aesthetic</SectionLabel>
+          <ParamSection paramKey="vibe" label="Aesthetic" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('vibe')} onToggle={() => toggleOverrideParam('vibe')}>
             <div className="grid grid-cols-2 gap-2">
               {(['Minimalist', 'Luxury', 'Ethereal', 'Street/Urban', 'Classic', 'Sunkissed', 'Bohème Chic'] as const).map((v) => (
                 <PillButton
@@ -532,11 +596,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* MAKEUP */}
-          <div>
-            <SectionLabel>Makeup</SectionLabel>
+          <ParamSection paramKey="makeup" label="Makeup" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('makeup')} onToggle={() => toggleOverrideParam('makeup')}>
             <div className="grid grid-cols-2 gap-2">
               {(['No Makeup', 'Barely There', 'Natural', 'Soft Glam', 'Editorial', 'Bold Night'] as const).map((m) => (
                 <PillButton
@@ -547,11 +610,10 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
 
           {/* CORPULENCE */}
-          <div>
-            <SectionLabel>Corpulence</SectionLabel>
+          <ParamSection paramKey="body" label="Corpulence" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('body')} onToggle={() => toggleOverrideParam('body')}>
             <ConfigSlider
               value={criteria.bodyComposition ?? 50}
               onChange={(v) => setCriteria({ bodyComposition: v })}
@@ -564,20 +626,18 @@ export const MannequinEngine: React.FC = () => {
                 (criteria.bodyComposition ?? 50) < 80 ? 'Curvy' : 'Plus Size'
               }
             />
-          </div>
+          </ParamSection>
 
           {/* DYNAMIC POSE */}
-          <div>
-            <SectionLabel>Dynamic Pose</SectionLabel>
+          <ParamSection paramKey="pose" label="Dynamic Pose" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('pose')} onToggle={() => toggleOverrideParam('pose')}>
             <PoseSelector
               selected={(criteria.pose as Pose) || 'standing'}
               onSelect={(pose) => setCriteria({ pose })}
             />
-          </div>
+          </ParamSection>
 
           {/* LIGHTING ENVIRONMENT */}
-          <div>
-            <SectionLabel>Lighting Environment</SectionLabel>
+          <ParamSection paramKey="lighting" label="Lighting Environment" isModeLibre={isModeLibre} isOverridden={overrideParams.includes('lighting')} onToggle={() => toggleOverrideParam('lighting')}>
             <div className="flex gap-2">
               {(['soft', 'studio', 'dramatic'] as const).map((l) => (
                 <PillButton
@@ -588,7 +648,7 @@ export const MannequinEngine: React.FC = () => {
                 />
               ))}
             </div>
-          </div>
+          </ParamSection>
         </div>
 
         {/* CUSTOM PROMPT */}
