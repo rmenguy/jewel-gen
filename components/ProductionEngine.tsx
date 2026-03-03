@@ -1,8 +1,9 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
-import { ProductionItem } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto } from '../services/geminiService';
+import { ProductionItem, ExtractionLevel, CustomPreset } from '../types';
+import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference } from '../services/geminiService';
+import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
 interface ProductionEngineProps {
@@ -39,6 +40,14 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [stackSelection, setStackSelection] = useState<Set<string>>(new Set());
   const [isStacking, setIsStacking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showRefModal, setShowRefModal] = useState(false);
+  const [refImage, setRefImage] = useState<string | null>(null);
+  const [extractionLevel, setExtractionLevel] = useState<ExtractionLevel>('scene-pose-style');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [extractedPrompt, setExtractedPrompt] = useState('');
+  const [presetName, setPresetName] = useState('');
+
+  const { customPresets, addCustomPreset, removeCustomPreset } = useProductionStore();
 
   const stats = useMemo(() => {
       return {
@@ -58,12 +67,62 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     }
   };
 
-  const handlePresetChange = (preset: keyof typeof PROMPT_PRESETS) => {
-    setSelectedPreset(preset);
-    if (preset === 'custom') {
-      return;
+  const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setRefImage(reader.result as string);
+        setExtractedPrompt('');
+      };
+      reader.readAsDataURL(file);
     }
-    setArtisticDirection(PROMPT_PRESETS[preset]);
+  };
+
+  const handleAnalyze = async () => {
+    if (!refImage) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await analyzeProductionReference(refImage, extractionLevel);
+      setExtractedPrompt(result);
+    } catch (err: any) {
+      alert(err.message || 'Analysis failed');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleApplyExtracted = () => {
+    setArtisticDirection(extractedPrompt);
+    setSelectedPreset('custom');
+    setShowRefModal(false);
+  };
+
+  const handleSaveAsPreset = () => {
+    if (!presetName.trim() || !extractedPrompt.trim()) return;
+    const preset: CustomPreset = {
+      id: crypto.randomUUID(),
+      name: presetName.trim(),
+      prompt: extractedPrompt,
+      createdAt: new Date().toISOString(),
+    };
+    addCustomPreset(preset);
+    setPresetName('');
+  };
+
+  const handlePresetChange = (preset: string) => {
+    if (preset.startsWith('custom-')) {
+      const customId = preset.replace('custom-', '');
+      const found = customPresets.find(p => p.id === customId);
+      if (found) {
+        setArtisticDirection(found.prompt);
+        setSelectedPreset('custom');
+        return;
+      }
+    }
+    setSelectedPreset(preset as keyof typeof PROMPT_PRESETS);
+    if (preset === 'custom') return;
+    setArtisticDirection(PROMPT_PRESETS[preset as keyof typeof PROMPT_PRESETS] || '');
   };
 
   const parseProductList = () => {
@@ -409,7 +468,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     <select
                         className="w-full bg-transparent text-[10px] text-gray-900 outline-none font-mono uppercase cursor-pointer"
                         value={selectedPreset}
-                        onChange={(e) => handlePresetChange(e.target.value as keyof typeof PROMPT_PRESETS)}
+                        onChange={(e) => handlePresetChange(e.target.value)}
                     >
                         <option value="default">Default (Natif)</option>
                         <option value="closeup">Close Up</option>
@@ -419,8 +478,21 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         <option value="flash">Flash Editorial (Vogue/Paparazzi)</option>
                         <option value="soft">Soft & Organic (Lumiere du Matin)</option>
                         <option value="custom">Custom (Personnalise)</option>
+                        {customPresets.length > 0 && <option disabled>──────────</option>}
+                        {customPresets.map(p => (
+                          <option key={p.id} value={`custom-${p.id}`}>{p.name}</option>
+                        ))}
                     </select>
                 </div>
+                <button
+                  onClick={() => setShowRefModal(true)}
+                  className="w-full h-8 mb-3 text-[9px] font-bold uppercase text-indigo-600 hover:text-indigo-500 border border-indigo-300 rounded transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Import Reference Photo
+                </button>
                 <label className="text-[9px] uppercase font-bold text-gray-400 mb-2 block">Atmosphere Prompt</label>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 relative focus-within:border-indigo-500 transition-colors">
                     <textarea
@@ -437,6 +509,117 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
             </div>
         </div>
       </div>
+
+      {showRefModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowRefModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-gray-900">Import Reference Photo</h3>
+                <button onClick={() => setShowRefModal(false)} className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs flex items-center justify-center hover:bg-gray-200">&times;</button>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {refImage ? (
+                <div className="relative rounded-lg border border-indigo-300 overflow-hidden">
+                  <img src={refImage} className="w-full h-48 object-cover" />
+                  <button onClick={() => { setRefImage(null); setExtractedPrompt(''); }} className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/50 text-white text-xs flex items-center justify-center hover:bg-black/70">&times;</button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50/50 py-8 cursor-pointer transition-colors">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <span className="text-xs font-semibold text-gray-500">Upload a production reference photo</span>
+                  <span className="text-[10px] text-gray-400">The AI will extract the scene, pose, and style</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleRefUpload} />
+                </label>
+              )}
+
+              {refImage && !extractedPrompt && (
+                <>
+                  <div>
+                    <label className="text-[9px] font-bold uppercase text-gray-400 block mb-2">Extraction Level</label>
+                    <div className="space-y-2">
+                      {([
+                        { key: 'scene-pose-style' as ExtractionLevel, label: 'Scene + Pose + Style', desc: 'Decor, lighting, pose, photo style. Ignores jewelry and identity.' },
+                        { key: 'scene-pose-style-placement' as ExtractionLevel, label: '+ Jewelry Placement', desc: 'Same + how jewelry is showcased (without describing the pieces).' },
+                        { key: 'full' as ExtractionLevel, label: 'Full Extraction', desc: 'Scene, pose, style, clothing, makeup, ambiance. Everything except identity and jewelry.' },
+                      ]).map(({ key, label, desc }) => (
+                        <button
+                          key={key}
+                          onClick={() => setExtractionLevel(key)}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                            extractionLevel === key
+                              ? 'border-indigo-400 bg-indigo-50'
+                              : 'border-gray-200 hover:border-gray-300 bg-white'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-gray-900">{label}</span>
+                          <span className="block text-[10px] text-gray-500 mt-0.5">{desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : 'Analyze Photo'}
+                  </button>
+                </>
+              )}
+
+              {extractedPrompt && (
+                <>
+                  <div>
+                    <label className="text-[9px] font-bold uppercase text-gray-400 block mb-2">Extracted Prompt (editable)</label>
+                    <textarea
+                      className="w-full h-40 bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-700 outline-none resize-none focus:border-indigo-400 transition-colors"
+                      value={extractedPrompt}
+                      onChange={(e) => setExtractedPrompt(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleApplyExtracted}
+                    className="w-full h-10 text-xs tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+                  >
+                    Apply to Batch
+                  </button>
+
+                  <div className="border-t border-gray-200 pt-3">
+                    <label className="text-[9px] font-bold uppercase text-gray-400 block mb-2">Save as Custom Preset</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Preset name..."
+                        value={presetName}
+                        onChange={(e) => setPresetName(e.target.value)}
+                        className="flex-1 h-9 bg-gray-50 border border-gray-200 rounded-lg px-3 text-xs outline-none focus:border-indigo-400 transition-colors"
+                      />
+                      <button
+                        onClick={handleSaveAsPreset}
+                        disabled={!presetName.trim()}
+                        className="h-9 px-4 text-[10px] font-bold uppercase bg-purple-600 hover:bg-purple-500 text-white rounded-lg disabled:opacity-40 transition-colors"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
