@@ -164,7 +164,7 @@ Si c'est du Shopify, essaie d'accéder virtuellement au JSON ou de parser le HTM
   });
 };
 
-export const generateMannequin = async (criteria: MannequinCriteria): Promise<string> => {
+export const generateMannequin = async (criteria: MannequinCriteria, overrideParams?: string[]): Promise<string> => {
   return withRetry(async () => {
     const vibeMap: Record<string, string> = {
         'Minimalist': 'natural soft window light, cream seamless background, composed serene pose, Cos/Arket aesthetic, quiet luxury',
@@ -256,7 +256,18 @@ export const generateMannequin = async (criteria: MannequinCriteria): Promise<st
     const ethnicityPrompt = ethnicityMap[criteria.ethnicity] || criteria.ethnicity;
     const morphologyPrompt = bodyFromSlider(criteria.bodyComposition);
 
-    const basePrompt = `EDITORIAL FASHION PORTRAIT shot on medium format film camera. RAW UNPROCESSED LOOK.
+    // Mode libre detection: overrideParams being defined (even empty) means mode libre is active
+    const isModeLivre = overrideParams !== undefined;
+    const shouldInclude = (param: string): boolean => {
+      if (!isModeLivre) return true;
+      return overrideParams!.includes(param);
+    };
+
+    let prompt: string;
+
+    if (!isModeLivre) {
+      // ── NORMAL MODE: existing basePrompt, completely unchanged ──
+      const basePrompt = `EDITORIAL FASHION PORTRAIT shot on medium format film camera. RAW UNPROCESSED LOOK.
 SUBJECT: ${criteria.gender}, ${criteria.age} years old, ${ethnicityPrompt} ethnicity.
 HAIR: ${criteria.hairColor}, ${hairCutMap[criteria.hairCut] || 'Hair worn loose and natural'}, ${hairLengthMap[criteria.hairLength] || 'medium, shoulder-length'}.
 ${posePrompt} Direct eye contact with camera.
@@ -266,9 +277,56 @@ MAKEUP: ${makeupPrompt}.
 CLOTHING: Simple dark or neutral top.
 TECHNICAL: Shot on Hasselblad H6D loaded with Kodak Portra 400 film. Lens 80mm f/2.8, ${lightingPrompt || 'natural window light with soft fill'}. CRITICAL TEXTURE: Film grain CLEARLY visible on skin and across the image. Skin pores, peach fuzz, and natural micro-texture must be photographic and tactile — NOT smooth, NOT digitally retouched, NOT AI-generated. The image must look like a scanned medium format negative: organic, grainy, human. Color grading: muted, slightly desaturated, warm analog tones.`;
 
-    const prompt = criteria.customPrompt?.trim()
-      ? `${basePrompt}\nADDITIONAL INSTRUCTIONS: ${criteria.customPrompt.trim()}`
-      : basePrompt;
+      prompt = criteria.customPrompt?.trim()
+        ? `${basePrompt}\nADDITIONAL INSTRUCTIONS: ${criteria.customPrompt.trim()}`
+        : basePrompt;
+
+    } else if (overrideParams!.length === 0) {
+      // ── MODE LIBRE: custom prompt only, no params appended ──
+      prompt = criteria.customPrompt?.trim() || 'Fashion portrait photo';
+
+    } else {
+      // ── MODE LIBRE with overrides: custom prompt + only forced params ──
+      const parts: string[] = [criteria.customPrompt?.trim() || 'Fashion portrait photo'];
+
+      if (shouldInclude('gender') || shouldInclude('age') || shouldInclude('ethnicity')) {
+        const subjectParts: string[] = [];
+        if (shouldInclude('gender')) subjectParts.push(criteria.gender);
+        if (shouldInclude('age')) subjectParts.push(`${criteria.age} years old`);
+        if (shouldInclude('ethnicity')) subjectParts.push(`${ethnicityPrompt} ethnicity`);
+        parts.push(`SUBJECT: ${subjectParts.join(', ')}.`);
+      }
+
+      if (shouldInclude('hair')) {
+        parts.push(`HAIR: ${criteria.hairColor}, ${hairCutMap[criteria.hairCut] || 'Hair worn loose and natural'}, ${hairLengthMap[criteria.hairLength] || 'medium, shoulder-length'}.`);
+      }
+
+      if (shouldInclude('body')) {
+        parts.push(`BODY: ${morphologyPrompt}.`);
+      }
+
+      if (shouldInclude('pose')) {
+        parts.push(`${posePrompt} Direct eye contact with camera.`);
+      }
+
+      if (shouldInclude('vibe')) {
+        parts.push(`MOOD: ${vibePrompt}.`);
+      }
+
+      if (shouldInclude('lighting') && lightingPrompt) {
+        parts.push(`LIGHTING: ${lightingPrompt}.`);
+      }
+
+      if (shouldInclude('skin')) {
+        parts.push(`SKIN: ${skinPrompt}. Photorealistic skin with natural texture.`);
+      }
+
+      if (shouldInclude('makeup')) {
+        parts.push(`MAKEUP: ${makeupPrompt}.`);
+      }
+
+      prompt = parts.join('\n');
+    }
 
     const response = await callImagenAPI('imagen-4.0-ultra-generate-001', {
       instances: [{ prompt }],
@@ -301,7 +359,8 @@ TECHNICAL: Shot on Hasselblad H6D loaded with Kodak Portra 400 film. Lens 80mm f
  */
 export const generateMannequinFromReference = async (
     referenceImageBase64: string,
-    criteria: MannequinCriteria
+    criteria: MannequinCriteria,
+    overrideParams?: string[]
 ): Promise<string> => {
     const ethnicityMap: Record<string, string> = {
         'european': 'European/Caucasian',
@@ -361,23 +420,70 @@ export const generateMannequinFromReference = async (
     // If analysis completely failed → fall back to standard generation
     if (!styleNotes) {
         console.warn('[REF-GEN] Could not extract style notes from reference. Falling back to standard generation.');
-        return generateMannequin(criteria);
+        return generateMannequin(criteria, overrideParams);
     }
 
     // ── STEP 2: Generate via Imagen using style notes ──
     // Imagen is text-to-image only — physically incapable of copying the reference person.
+    const isModeLivre = overrideParams !== undefined;
+    const shouldInclude = (param: string): boolean => {
+        if (!isModeLivre) return true;
+        return overrideParams!.includes(param);
+    };
+
     const bodyPrompt =
         (criteria.bodyComposition ?? 50) < 20 ? 'slim petite frame' :
         (criteria.bodyComposition ?? 50) < 40 ? 'slender athletic build' :
         (criteria.bodyComposition ?? 50) < 60 ? 'standard fashion model proportions' :
         (criteria.bodyComposition ?? 50) < 80 ? 'curvy feminine figure' : 'plus-size full figure';
 
-    const generationPrompt = `EDITORIAL FASHION PORTRAIT shot on medium format analog film.
+    let generationPrompt: string;
+
+    if (!isModeLivre) {
+        // ── NORMAL MODE: existing prompt, completely unchanged ──
+        generationPrompt = `EDITORIAL FASHION PORTRAIT shot on medium format analog film.
 SUBJECT: ${criteria.gender}, ${criteria.age} years old, ${ethnicityPrompt} ethnicity. Unique individual, original face, original identity.
 STYLE DIRECTION (reproduce this aesthetic precisely, NOT the person):
 ${styleNotes}
 SKIN (CRITICAL): Photographic organic skin — visible pores, natural Kodak Portra 400 film grain on skin, peach fuzz, natural micro-texture. Absolutely NO digital smoothing or AI-skin appearance. Looks like a scanned medium format negative.
 BODY: ${bodyPrompt}.${criteria.customPrompt?.trim() ? `\nADDITIONAL: ${criteria.customPrompt.trim()}` : ''}`;
+    } else {
+        // ── MODE LIBRE: build prompt conditionally ──
+        const parts: string[] = [];
+
+        // Custom prompt is the base in mode libre
+        if (criteria.customPrompt?.trim()) {
+            parts.push(criteria.customPrompt.trim());
+        } else {
+            parts.push('EDITORIAL FASHION PORTRAIT shot on medium format analog film.');
+        }
+
+        // Subject line — only include specified params
+        if (shouldInclude('gender') || shouldInclude('age') || shouldInclude('ethnicity')) {
+            const subjectParts: string[] = [];
+            if (shouldInclude('gender')) subjectParts.push(criteria.gender);
+            if (shouldInclude('age')) subjectParts.push(`${criteria.age} years old`);
+            if (shouldInclude('ethnicity')) subjectParts.push(`${ethnicityPrompt} ethnicity`);
+            parts.push(`SUBJECT: ${subjectParts.join(', ')}. Unique individual, original face, original identity.`);
+        }
+
+        // Style notes from Step 1 are ALWAYS included
+        parts.push(`STYLE DIRECTION (reproduce this aesthetic precisely, NOT the person):\n${styleNotes}`);
+
+        if (shouldInclude('body')) {
+            parts.push(`BODY: ${bodyPrompt}.`);
+        }
+
+        if (shouldInclude('pose')) {
+            parts.push('Full body visible, editorial pose.');
+        }
+
+        if (shouldInclude('lighting')) {
+            parts.push('Professional studio lighting.');
+        }
+
+        generationPrompt = parts.join('\n');
+    }
 
     try {
         return await withRetry(async () => {
@@ -395,7 +501,7 @@ BODY: ${bodyPrompt}.${criteria.customPrompt?.trim() ? `\nADDITIONAL: ${criteria.
     } catch (err) {
         // Final safety net: if Imagen repeatedly returns nothing, use standard generation
         console.warn('[REF-GEN] Imagen failed after retries. Falling back to standard generation.', err);
-        return generateMannequin(criteria);
+        return generateMannequin(criteria, overrideParams);
     }
 };
 
