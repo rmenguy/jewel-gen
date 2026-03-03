@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProductionItem, Product } from '../types';
+import { ProductionItem, Product, CustomPreset } from '../types';
 
 interface ProductionStore {
   queue: ProductionItem[];
@@ -13,6 +13,11 @@ interface ProductionStore {
 
   // Convert catalog products to production items and add
   addProductsToQueue: (products: Product[]) => void;
+
+  // Custom presets from reference photo analysis
+  customPresets: CustomPreset[];
+  addCustomPreset: (preset: CustomPreset) => void;
+  removeCustomPreset: (id: string) => void;
 }
 
 export const useProductionStore = create<ProductionStore>((set) => ({
@@ -53,4 +58,20 @@ export const useProductionStore = create<ProductionStore>((set) => ({
         })),
       ],
     })),
+
+  customPresets: JSON.parse(localStorage.getItem('production-custom-presets') || '[]'),
+
+  addCustomPreset: (preset) =>
+    set((state) => {
+      const updated = [...state.customPresets, preset];
+      localStorage.setItem('production-custom-presets', JSON.stringify(updated));
+      return { customPresets: updated };
+    }),
+
+  removeCustomPreset: (id) =>
+    set((state) => {
+      const updated = state.customPresets.filter(p => p.id !== id);
+      localStorage.setItem('production-custom-presets', JSON.stringify(updated));
+      return { customPresets: updated };
+    }),
 }));

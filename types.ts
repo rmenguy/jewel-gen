@@ -119,6 +119,16 @@ export interface RefinementSelections {
   outfitBase64?: string;
 }
 
+// Production reference photo analysis
+export type ExtractionLevel = 'scene-pose-style' | 'scene-pose-style-placement' | 'full';
+
+export interface CustomPreset {
+  id: string;
+  name: string;
+  prompt: string;
+  createdAt: string;
+}
+
 // Supabase product type
 export interface SupabaseProduct {
   id: string;

@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel } from "../types";
 
 const CATALOG_SYSTEM_INSTRUCTION = `
 **ROLE**: Tu es CATALOG.ENGINE, un expert technique en scraping de données e-commerce.
@@ -753,6 +753,109 @@ export const generateStackedProductionPhoto = async (
 
         throw new Error("Aucune image générée pour le stacking.");
     });
+};
+
+/**
+ * Analyze a production reference photo and extract a reusable scene/style prompt.
+ * Deliberately excludes specific jewelry details and model identity.
+ */
+export const analyzeProductionReference = async (
+    imageBase64: string,
+    extractionLevel: ExtractionLevel
+): Promise<string> => {
+    const mimeType = imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
+        : imageBase64.startsWith('data:image/webp') ? 'image/webp'
+        : 'image/png';
+    const imageData = imageBase64.includes('base64,')
+        ? imageBase64.split(',')[1]
+        : imageBase64;
+
+    const promptMap: Record<ExtractionLevel, string> = {
+        'scene-pose-style': `You are a professional photography director. Analyze this jewelry/fashion production photo and write a PRODUCTION DIRECTIVE that could recreate this exact scene with a DIFFERENT model wearing DIFFERENT jewelry.
+
+Extract and describe as imperative instructions:
+1. SCENE & SETTING: Background environment, props, surfaces, colors, textures. Be very specific (e.g., "Use a matte marble surface with warm grey veining" not just "marble background").
+2. LIGHTING: Direction, quality (hard/soft), color temperature, number of light sources, shadow characteristics, highlights, reflections.
+3. POSE & FRAMING: Model's body position, camera angle, crop (close-up/medium/full), composition, negative space.
+4. PHOTOGRAPHY STYLE: Genre (editorial, commercial, lifestyle, fine art), color grading, contrast level, mood, overall aesthetic.
+
+CRITICAL EXCLUSIONS — do NOT describe:
+- The specific jewelry pieces (type, design, material, brand)
+- The model's identity, face, ethnicity, or distinctive physical features
+- Any brand or product identifiers
+
+Write as a concise, actionable production directive using imperative language ("Position the model...", "Light the scene with...", "Frame as...").`,
+
+        'scene-pose-style-placement': `You are a professional jewelry photography director. Analyze this jewelry production photo and write a PRODUCTION DIRECTIVE that could recreate this exact scene with a DIFFERENT model wearing DIFFERENT jewelry.
+
+Extract and describe as imperative instructions:
+1. SCENE & SETTING: Background environment, props, surfaces, colors, textures. Be very specific.
+2. LIGHTING: Direction, quality, color temperature, number of sources, shadow style, highlight placement, how light interacts with reflective surfaces.
+3. POSE & FRAMING: Model's body position, camera angle, crop, composition, negative space.
+4. PHOTOGRAPHY STYLE: Genre, color grading, contrast, mood, overall aesthetic.
+5. JEWELRY SHOWCASE TECHNIQUE: How the jewelry is presented and highlighted — angles that emphasize sparkle or detail, hand/neck/ear positioning to showcase pieces, how the body is oriented to give jewelry prominence, framing choices that draw the eye to adornment zones. Describe the TECHNIQUE of showcasing, NOT the jewelry itself.
+
+CRITICAL EXCLUSIONS — do NOT describe:
+- The specific jewelry pieces (type, design, material, gemstones, brand)
+- The model's identity, face, ethnicity, or distinctive physical features
+- Any brand or product identifiers
+
+Write as a concise, actionable production directive using imperative language ("Angle the model's wrist toward camera to showcase the bracelet zone...", "Light from 45° above to create sparkle on adornment areas...").`,
+
+        'full': `You are a senior creative director for luxury jewelry photography. Analyze this production photo in exhaustive detail and write a comprehensive PRODUCTION DIRECTIVE that could recreate this exact visual with a DIFFERENT model wearing DIFFERENT jewelry.
+
+Extract and describe as imperative instructions:
+1. SCENE & SETTING: Background environment, props, surfaces, colors, textures, depth layers, any set design elements. Be extremely specific.
+2. LIGHTING: Direction, quality, color temperature, number of sources, shadow characteristics, highlight placement, rim lighting, fill lighting, how light interacts with skin and reflective surfaces, any colored gels or filters.
+3. POSE & BODY LANGUAGE: Exact body position, weight distribution, hand placement, head tilt, gaze direction, emotional expression, gesture, tension/relaxation in the body.
+4. PHOTOGRAPHY STYLE: Genre, color grading, contrast curve, saturation, film stock emulation, lens characteristics (bokeh, focal length feel), overall aesthetic.
+5. CLOTHING & STYLING: Garment types, fabric textures, colors, how clothing drapes, neckline style, sleeve type — describe everything the model is wearing EXCEPT jewelry.
+6. MAKEUP & BEAUTY: Skin finish (matte/dewy/natural), eye makeup style, lip color, blush placement, overall beauty direction.
+7. MOOD & ATMOSPHERE: Emotional tone, visual storytelling, luxury level, season/time feeling, editorial vs commercial intent.
+8. JEWELRY SHOWCASE TECHNIQUE: How adornment zones are presented — angles, body positioning, light placement for sparkle, framing that draws attention to where jewelry sits. Describe the TECHNIQUE only, not the jewelry.
+
+CRITICAL EXCLUSIONS — do NOT describe:
+- The specific jewelry pieces (type, design, material, gemstones, brand, color of the jewelry)
+- The model's identity, face shape, ethnicity, age, or any identifying physical features
+- Any brand names, logos, or product identifiers
+
+Write as a detailed, actionable production directive using imperative language. This directive will be used to recreate the same visual atmosphere with completely different talent and products.`,
+    };
+
+    const analysisPrompt = promptMap[extractionLevel];
+    let extractedText = '';
+    const analysisModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-pro-image-preview'];
+
+    for (const model of analysisModels) {
+        try {
+            const response = await callGeminiAPI(model, {
+                contents: [{
+                    parts: [
+                        { text: analysisPrompt },
+                        { inlineData: { mimeType, data: imageData } },
+                    ],
+                }],
+                generationConfig: { responseModalities: ['TEXT'] },
+            });
+            const extracted = response.candidates?.[0]?.content?.parts
+                ?.filter((p: any) => p.text)
+                ?.map((p: any) => p.text)
+                ?.join('') || '';
+            if (extracted.length > 30) {
+                extractedText = extracted;
+                console.log(`[REF-ANALYZE] Scene extracted via ${model} (${extractionLevel}):`, extractedText.substring(0, 200));
+                break;
+            }
+        } catch (err: any) {
+            console.warn(`[REF-ANALYZE] Analysis failed with ${model}:`, err?.message || err);
+        }
+    }
+
+    if (!extractedText) {
+        throw new Error('Failed to analyze production reference photo — all models failed.');
+    }
+
+    return extractedText;
 };
 
 /**
