@@ -627,7 +627,7 @@ export const generateProductionPhoto = async (
 
         let prompt = `Luxury commercial photography. 4K RESOLUTION. The product ${category ? `(${category})` : ''} is the centerpiece. `;
         if (mannequinBase64) {
-            prompt += `CRITICAL IDENTITY PRESERVATION: The model in the output must be RECOGNIZABLY the EXACT SAME person as in the reference image. Preserve IDENTICAL facial features (eyes, nose, mouth, jawline, face shape), IDENTICAL hair (color, style, length, texture), IDENTICAL skin tone and complexion, IDENTICAL body type and proportions. Do NOT alter, age, or reinterpret the person in any way — she must look like the same individual photographed in a different moment. Editorial pose. Product worn realistically. `;
+            prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference image. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Editorial pose. Product worn realistically. `;
         } else {
             prompt += `MANNEQUIN: Worn by a realistic model. `;
         }
@@ -720,7 +720,7 @@ export const generateStackedProductionPhoto = async (
         let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING — place ALL the following products on the SAME model simultaneously:\n${productDescriptions}\n\n`;
 
         if (mannequinBase64) {
-            prompt += `CRITICAL IDENTITY PRESERVATION: The model must be RECOGNIZABLY the EXACT SAME person as in the reference (image 1). Preserve IDENTICAL facial features (eyes, nose, mouth, jawline, face shape), IDENTICAL hair (color, style, length, texture), IDENTICAL skin tone and complexion, IDENTICAL body type. Do NOT alter or reinterpret the person — same individual, different jewelry. `;
+            prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference (image 1). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Same individual, different jewelry. `;
         } else {
             prompt += `MANNEQUIN: Professional fashion model. `;
         }
