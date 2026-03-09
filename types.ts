@@ -51,6 +51,8 @@ export interface ProductionItem {
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'ERROR';
   resultImage?: string;
   error?: string;
+  chainLength?: number;    // cm — user-entered
+  pendantSize?: number;    // cm — user-entered
 }
 
 export type EngineType = 'CATALOG' | 'MANNEQUIN' | 'PRODUCTION' | 'BATCH';
@@ -127,6 +129,38 @@ export interface CustomPreset {
   name: string;
   prompt: string;
   createdAt: string;
+}
+
+// Jewelry Fidelity Engine types
+export interface ProductDimensions {
+  chainLength?: number;    // cm
+  pendantSize?: number;    // cm
+}
+
+export interface JewelryBlueprint {
+  material: string;
+  chainType: string;
+  stoneShape: string;
+  stoneSetting: string;
+  pendantShape: string;
+  finish: string;
+  colorDetails: string;
+  rawDescription: string;  // full text for prompt injection
+}
+
+export interface FidelityScore {
+  chain: number;           // 1-5
+  stones: number;          // 1-5
+  pendant: number;         // 1-5
+  material: number;        // 1-5
+  proportions: number;     // 1-5
+}
+
+export interface FidelityResult {
+  scores: FidelityScore;
+  overallScore: number;
+  corrections: string[];
+  passed: boolean;
 }
 
 // Supabase product type

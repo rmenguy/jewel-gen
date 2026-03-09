@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
-import { ProductionItem, ExtractionLevel, CustomPreset } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference } from '../services/geminiService';
+import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions } from '../types';
+import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct } from '../services/geminiService';
 import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
@@ -46,6 +46,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [extractedPrompt, setExtractedPrompt] = useState('');
   const [presetName, setPresetName] = useState('');
+  const [fidelityStatus, setFidelityStatus] = useState<Record<string, string>>({});
 
   const { customPresets, addCustomPreset, removeCustomPreset } = useProductionStore();
 
@@ -210,18 +211,41 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 .replace('{jewelry_description}', jewelryDesc)
                 .replace('{background_context}', backgroundCtx);
 
+            // Fidelity Engine: pre-analyze jewelry
+            let blueprint: JewelryBlueprint | undefined;
+            try {
+                setFidelityStatus(prev => ({ ...prev, [item.id]: 'Analyzing jewelry...' }));
+                blueprint = await analyzeJewelryProduct(item.imageUrl);
+                console.log('[FIDELITY] Blueprint:', blueprint.rawDescription.substring(0, 100));
+            } catch (err) {
+                console.warn('[FIDELITY] Pre-analysis failed, proceeding without blueprint:', err);
+            }
+
+            // Build dimensions if provided
+            const dimensions: ProductDimensions | undefined =
+                (item.chainLength || item.pendantSize)
+                    ? { chainLength: item.chainLength, pendantSize: item.pendantSize }
+                    : undefined;
+
+            setFidelityStatus(prev => ({ ...prev, [item.id]: blueprint ? 'Generating with fidelity...' : 'Generating...' }));
+
             const resultImage = await generateProductionPhoto(
                 mannequinImage,
                 item.imageUrl,
                 itemPrompt,
-                item.category
+                item.category,
+                blueprint,
+                dimensions
             );
+
             console.log('[PRODUCTION] Generation successful for item:', item.id);
             updateItemStatus(item.id, { status: 'COMPLETED', resultImage });
+            setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
         } catch (err: any) {
             console.error('[PRODUCTION] Error for item:', item.id, err);
             const errorMsg = err.message || String(err);
             updateItemStatus(item.id, { status: 'ERROR', error: errorMsg });
+            setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
         }
     };
 
@@ -264,6 +288,10 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
       setQueue(prev => prev.map(p => p.id === id ? { ...p, category } : p));
   };
 
+  const updateItemDimensions = (id: string, dims: { chainLength?: number; pendantSize?: number }) => {
+      setQueue(prev => prev.map(p => p.id === id ? { ...p, ...dims } : p));
+  };
+
   const handleToggleStack = (id: string) => {
     const newSet = new Set(stackSelection);
     if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
@@ -275,11 +303,23 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     if (selectedItems.length < 2) return;
     setIsStacking(true);
     try {
-      const products = selectedItems.map(item => ({
-        imageUrl: item.imageUrl,
-        category: item.category || '',
-        name: item.name,
+      // Pre-analyze each product for fidelity
+      const products = await Promise.all(selectedItems.map(async (item) => {
+        let blueprint: JewelryBlueprint | undefined;
+        try {
+          blueprint = await analyzeJewelryProduct(item.imageUrl);
+        } catch { /* proceed without */ }
+        return {
+          imageUrl: item.imageUrl,
+          category: item.category || '',
+          name: item.name,
+          blueprint,
+          dimensions: (item.chainLength || item.pendantSize)
+            ? { chainLength: item.chainLength, pendantSize: item.pendantSize }
+            : undefined,
+        };
       }));
+
       let effectivePrompt = artisticDirection;
       if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
       const resultImage = await generateStackedProductionPhoto(mannequinImage, products, effectivePrompt);
@@ -362,23 +402,43 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                 <div className="absolute top-1 right-1 z-10"><StatusDot status={item.status} /></div>
                                 {/* Per-item category selector */}
                                 <div className="absolute bottom-0 left-0 right-0 z-20" onClick={(e) => e.stopPropagation()}>
-                                    <select
-                                        className="w-full bg-black/60 text-white text-[8px] font-bold uppercase px-1 py-0.5 outline-none cursor-pointer appearance-none text-center backdrop-blur-sm"
-                                        value={item.category || ''}
-                                        onChange={(e) => updateItemCategory(item.id, e.target.value)}
-                                    >
-                                        <option value="">Auto</option>
-                                        <option value="necklace">Collier</option>
-                                        <option value="sautoir-court">Sautoir Court</option>
-                                        <option value="sautoir-long">Sautoir Long</option>
-                                        <option value="ring">Bague</option>
-                                        <option value="earrings">Boucles</option>
-                                        <option value="bracelet">Bracelet</option>
-                                    </select>
+                                    <div className="bg-black/60 backdrop-blur-sm px-1 py-0.5 space-y-0.5">
+                                        <select
+                                            className="w-full bg-transparent text-white text-[8px] font-bold uppercase outline-none cursor-pointer appearance-none text-center"
+                                            value={item.category || ''}
+                                            onChange={(e) => updateItemCategory(item.id, e.target.value)}
+                                        >
+                                            <option value="">Auto</option>
+                                            <option value="necklace">Collier</option>
+                                            <option value="sautoir-court">Sautoir Court</option>
+                                            <option value="sautoir-long">Sautoir Long</option>
+                                            <option value="ring">Bague</option>
+                                            <option value="earrings">Boucles</option>
+                                            <option value="bracelet">Bracelet</option>
+                                        </select>
+                                        {item.category && !item.category.includes('ring') && !item.category.includes('bague') && (
+                                            <div className="flex gap-0.5">
+                                                <input
+                                                    type="number"
+                                                    placeholder="Ch cm"
+                                                    className="w-1/2 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
+                                                    value={item.chainLength || ''}
+                                                    onChange={(e) => updateItemDimensions(item.id, { chainLength: e.target.value ? Number(e.target.value) : undefined })}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    placeholder="Pd cm"
+                                                    className="w-1/2 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
+                                                    value={item.pendantSize || ''}
+                                                    onChange={(e) => updateItemDimensions(item.id, { pendantSize: e.target.value ? Number(e.target.value) : undefined })}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 {item.status === 'PROCESSING' && <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center z-10 p-2 text-center">
                                     <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-1"></div>
-                                    <span className="text-[7px] text-indigo-600 animate-pulse font-bold uppercase">Processing...</span>
+                                    <span className="text-[7px] text-indigo-600 animate-pulse font-bold uppercase">{fidelityStatus[item.id] || 'Processing...'}</span>
                                 </div>}
                             </div>
                         ))}
