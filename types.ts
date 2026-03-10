@@ -149,18 +149,26 @@ export interface JewelryBlueprint {
 }
 
 export interface FidelityScore {
-  chain: number;           // 1-5
-  stones: number;          // 1-5
-  pendant: number;         // 1-5
-  material: number;        // 1-5
-  proportions: number;     // 1-5
+  pHashDistance: number;       // 0-64, lower is better
+  histogramCorrelation: number; // 0-1, higher is better
 }
 
-export interface FidelityResult {
+export interface PixelFidelityResult {
   scores: FidelityScore;
-  overallScore: number;
-  corrections: string[];
   passed: boolean;
+  diagnosis: 'shape' | 'color' | 'both' | 'none';
+}
+
+export type PoseKey = 'neck' | 'ear' | 'wrist' | 'hand';
+
+export interface SegmentationResult {
+  box_2d: [number, number, number, number]; // [y0, x0, y1, x1] normalized 0-1000
+  mask: string;                              // base64 PNG
+  label: string;
+}
+
+export interface BareCache {
+  [key: string]: string;  // poseKey+mannequinHash+direction → base64 image
 }
 
 // Supabase product type

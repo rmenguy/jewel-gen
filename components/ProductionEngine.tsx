@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
-import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct } from '../services/geminiService';
+import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions, PoseKey } from '../types';
+import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry } from '../services/geminiService';
 import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
@@ -48,7 +48,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [presetName, setPresetName] = useState('');
   const [fidelityStatus, setFidelityStatus] = useState<Record<string, string>>({});
 
-  const { customPresets, addCustomPreset, removeCustomPreset } = useProductionStore();
+  const { customPresets, addCustomPreset, removeCustomPreset, setBareCache, getBareCache, clearBareCache } = useProductionStore();
 
   const stats = useMemo(() => {
       return {
@@ -196,6 +196,11 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     };
 
     // Process items in parallel (5 at a time)
+    const bareCache = {
+        get: getBareCache,
+        set: setBareCache
+    };
+
     const processItem = async (item: ProductionItem): Promise<void> => {
         updateItemStatus(item.id, { status: 'PROCESSING', error: undefined });
         setSelectedItemId(item.id);
@@ -227,7 +232,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     ? { chainLength: item.chainLength, pendantSize: item.pendantSize }
                     : undefined;
 
-            setFidelityStatus(prev => ({ ...prev, [item.id]: blueprint ? 'Generating with fidelity...' : 'Generating...' }));
+            setFidelityStatus(prev => ({ ...prev, [item.id]: 'Generating (bare + dress)...' }));
 
             const resultImage = await generateProductionPhoto(
                 mannequinImage,
@@ -235,17 +240,25 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 itemPrompt,
                 item.category,
                 blueprint,
-                dimensions
+                dimensions,
+                bareCache
             );
 
             console.log('[PRODUCTION] Generation successful for item:', item.id);
             updateItemStatus(item.id, { status: 'COMPLETED', resultImage });
-            setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+            setFidelityStatus(prev => ({ ...prev, [item.id]: '\u2713 Complete' }));
+            // Clear fidelity status after a brief delay
+            setTimeout(() => {
+                setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+            }, 2000);
         } catch (err: any) {
             console.error('[PRODUCTION] Error for item:', item.id, err);
             const errorMsg = err.message || String(err);
             updateItemStatus(item.id, { status: 'ERROR', error: errorMsg });
-            setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+            setFidelityStatus(prev => ({ ...prev, [item.id]: '\u2717 Error' }));
+            setTimeout(() => {
+                setFidelityStatus(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+            }, 3000);
         }
     };
 
@@ -302,6 +315,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     const selectedItems = queue.filter(i => stackSelection.has(i.id));
     if (selectedItems.length < 2) return;
     setIsStacking(true);
+    const bareCache = { get: getBareCache, set: setBareCache };
     try {
       // Pre-analyze each product for fidelity
       const products = await Promise.all(selectedItems.map(async (item) => {
@@ -322,7 +336,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
       let effectivePrompt = artisticDirection;
       if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
-      const resultImage = await generateStackedProductionPhoto(mannequinImage, products, effectivePrompt);
+      const resultImage = await generateStackedProductionPhoto(mannequinImage, products, effectivePrompt, bareCache);
       const stackedItem: ProductionItem = {
         id: crypto.randomUUID(),
         sku: `STACK-${selectedItems.map(i => i.sku).join('+')}`,
@@ -514,7 +528,12 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     <div className="flex justify-between items-center mb-2">
                         <label className="text-[9px] uppercase font-bold text-gray-400">Model Reference</label>
                         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleMannequinUpload} />
-                        <button onClick={() => fileInputRef.current?.click()} className="text-[9px] text-indigo-600 hover:text-indigo-500 font-bold uppercase">{mannequinImage ? 'Switch' : 'Upload'}</button>
+                        <div className="flex items-center gap-2">
+                            {mannequinImage && (
+                                <button onClick={clearBareCache} className="text-[9px] text-gray-400 hover:text-red-500 font-medium transition-colors">Clear pose cache</button>
+                            )}
+                            <button onClick={() => fileInputRef.current?.click()} className="text-[9px] text-indigo-600 hover:text-indigo-500 font-bold uppercase">{mannequinImage ? 'Switch' : 'Upload'}</button>
+                        </div>
                     </div>
                     <div className={`h-12 bg-gray-50 border rounded flex items-center px-2 gap-3 transition-colors ${mannequinImage ? 'border-indigo-400' : 'border-gray-200'}`}>
                         <div className="w-8 h-8 bg-gray-100 rounded overflow-hidden">{mannequinImage ? <img src={mannequinImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-[8px]">NONE</div>}</div>

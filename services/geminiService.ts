@@ -1,4 +1,5 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, FidelityResult, FidelityScore, ProductDimensions } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult } from "../types";
+import { compareJewelryCrops, base64ToImageData, cropFromSegmentation } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
 **ROLE**: Tu es CATALOG.ENGINE, un expert technique en scraping de données e-commerce.
@@ -614,152 +615,219 @@ export const fetchImageAsBase64 = async (url: string): Promise<string> => {
     }
 };
 
+const getPoseKeyForCategory = (category: string): PoseKey => {
+    const cat = category.toLowerCase();
+    if (cat.includes('sautoir') || cat.includes('collier') || cat.includes('necklace')) return 'neck';
+    if (cat.includes('boucles') || cat.includes('earring')) return 'ear';
+    if (cat.includes('bracelet')) return 'wrist';
+    if (cat.includes('bague') || cat.includes('ring')) return 'hand';
+    return 'neck';
+};
+
 export const generateProductionPhoto = async (
     mannequinBase64: string | null,
     productUrl: string,
     artisticDirection: string,
     category: string = '',
     blueprint?: JewelryBlueprint,
-    dimensions?: ProductDimensions
+    dimensions?: ProductDimensions,
+    bareCache?: { get: (key: string) => string | undefined; set: (key: string, img: string) => void }
 ): Promise<string> => {
-    console.log('[PRODUCTION] Starting generation');
+    console.log('[PRODUCTION] Starting generation (bare+dress+pixel pipeline)');
     return withRetry(async () => {
-        let productBase64 = await fetchImageAsBase64(productUrl);
+        // --- Step A: Fetch product image ---
+        const productBase64 = await fetchImageAsBase64(productUrl);
+        const productBase64DataUri = `data:image/jpeg;base64,${productBase64}`;
         console.log('[PRODUCTION] Product image loaded');
 
-        let prompt = `Luxury commercial photography. 4K RESOLUTION. The product ${category ? `(${category})` : ''} is the centerpiece. `;
+        // --- Step B: Bare generation with cache ---
+        let bareImage: string | null = null;
         if (mannequinBase64) {
-            prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference image. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Editorial pose. Product worn realistically. `;
+            const poseKey = getPoseKeyForCategory(category);
+            const cacheKey = `${poseKey}-${artisticDirection.substring(0, 20)}`;
+            const cached = bareCache?.get(cacheKey);
+            if (cached) {
+                bareImage = cached;
+                console.log(`[PRODUCTION] Bare mannequin from cache — key: ${cacheKey}`);
+            } else {
+                console.log(`[PRODUCTION] Generating bare mannequin — pose: ${poseKey}`);
+                bareImage = await generateBareMannequin(mannequinBase64, artisticDirection, poseKey, category);
+                bareCache?.set(cacheKey, bareImage);
+                console.log(`[PRODUCTION] Bare mannequin generated and cached — key: ${cacheKey}`);
+            }
+        }
+
+        // --- Step C: Dress pass ---
+        let dressedImage: string;
+        if (bareImage) {
+            console.log('[PRODUCTION] Dressing bare mannequin with jewelry');
+            dressedImage = await dressWithJewelry(bareImage, productBase64DataUri, blueprint || null, dimensions || null, category);
+            console.log('[PRODUCTION] Dress pass complete');
         } else {
+            // Fallback: single-pass generation (no mannequin provided)
+            console.log('[PRODUCTION] No mannequin — using single-pass fallback');
+            let prompt = `Luxury commercial photography. 4K RESOLUTION. The product ${category ? `(${category})` : ''} is the centerpiece. `;
             prompt += `MANNEQUIN: Worn by a realistic model. `;
-        }
 
-        const categoryLower = category.toLowerCase();
-        if (categoryLower.includes('sautoir-long')) {
-            prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
-        } else if (categoryLower.includes('sautoir')) {
-            prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
-        } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
-            prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
-        } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
-            prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
-        } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
-            prompt += `PLACEMENT: Earrings attached to earlobes, clearly visible. Head angled slightly to showcase the jewelry. Hair pulled back or tucked behind the ear if needed. `;
-        } else if (categoryLower.includes('bracelet')) {
-            prompt += `PLACEMENT: Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose. `;
-        }
+            const categoryLower = category.toLowerCase();
+            if (categoryLower.includes('sautoir-long')) {
+                prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
+            } else if (categoryLower.includes('sautoir')) {
+                prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
+            } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
+                prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
+            } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
+                prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
+            } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
+                prompt += `PLACEMENT: Earrings attached to earlobes, clearly visible. Head angled slightly to showcase the jewelry. Hair pulled back or tucked behind the ear if needed. `;
+            } else if (categoryLower.includes('bracelet')) {
+                prompt += `PLACEMENT: Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose. `;
+            }
 
-        // Inject jewelry blueprint if available (fidelity engine)
-        if (blueprint) {
-            prompt += `\nPRODUCT BLUEPRINT (REPRODUCE THIS EXACTLY):\n`;
-            prompt += `Material: ${blueprint.material}. `;
-            prompt += `Chain: ${blueprint.chainType}. `;
-            if (blueprint.stoneShape !== 'none') prompt += `Stones: ${blueprint.stoneShape}, set in ${blueprint.stoneSetting}. `;
-            if (blueprint.pendantShape !== 'none') prompt += `Pendant: ${blueprint.pendantShape}. `;
-            prompt += `Finish: ${blueprint.finish}. `;
-            prompt += `\nCRITICAL FIDELITY: ${blueprint.rawDescription} `;
-            prompt += `The jewelry in the output MUST match the product reference image EXACTLY — same chain type, same stone shapes, same proportions. Do NOT approximate or substitute any element. `;
-        }
+            if (blueprint) {
+                prompt += `\nPRODUCT BLUEPRINT (REPRODUCE THIS EXACTLY):\n`;
+                prompt += `Material: ${blueprint.material}. `;
+                prompt += `Chain: ${blueprint.chainType}. `;
+                if (blueprint.stoneShape !== 'none') prompt += `Stones: ${blueprint.stoneShape}, set in ${blueprint.stoneSetting}. `;
+                if (blueprint.pendantShape !== 'none') prompt += `Pendant: ${blueprint.pendantShape}. `;
+                prompt += `Finish: ${blueprint.finish}. `;
+                prompt += `\nCRITICAL FIDELITY: ${blueprint.rawDescription} `;
+                prompt += `The jewelry in the output MUST match the product reference image EXACTLY — same chain type, same stone shapes, same proportions. Do NOT approximate or substitute any element. `;
+            }
 
-        if (dimensions) {
-            const anchors = buildDimensionAnchors(dimensions, category);
-            if (anchors) prompt += `\n${anchors} `;
-        }
+            if (dimensions) {
+                const anchors = buildDimensionAnchors(dimensions, category);
+                if (anchors) prompt += `\n${anchors} `;
+            }
 
-        prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
+            prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
 
-        const parts: any[] = [{ text: prompt }];
-        if (mannequinBase64) {
+            const parts: any[] = [{ text: prompt }];
             parts.push({
                 inlineData: {
-                    mimeType: "image/png",
-                    data: mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64
+                    mimeType: "image/jpeg",
+                    data: productBase64
                 }
             });
-        }
-        parts.push({
-            inlineData: {
-                mimeType: "image/jpeg",
-                data: productBase64
-            }
-        });
 
-        console.log('[PRODUCTION] Calling Gemini API');
-
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
-          contents: [{ parts }],
-          generationConfig: {
-            responseModalities: ['IMAGE', 'TEXT'],
-            imageConfig: {
-              imageSize: '4K',
-            },
-          }
-        });
-
-        console.log('[PRODUCTION] API Response received');
-
-        // --- Fidelity validation loop ---
-        const extractImage = (resp: any): string | null => {
-            for (const part of resp.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+                contents: [{ parts }],
+                generationConfig: {
+                    responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { imageSize: '4K' },
                 }
-            }
-            return null;
-        };
+            });
 
-        let candidateImage = extractImage(response);
-        if (!candidateImage) throw new Error("Aucune image générée.");
+            const extractImage = (resp: any): string | null => {
+                for (const part of resp.candidates?.[0]?.content?.parts || []) {
+                    if (part.inlineData) {
+                        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    }
+                }
+                return null;
+            };
 
-        // If blueprint provided, validate fidelity and retry if needed
+            const fallbackImage = extractImage(response);
+            if (!fallbackImage) throw new Error("Aucune image générée.");
+            dressedImage = fallbackImage;
+        }
+
+        // --- Step D: Pixel validation (only if blueprint provided) ---
         if (blueprint) {
-            let bestImage = candidateImage;
+            console.log('[PRODUCTION] Starting pixel validation');
+
+            const [dressedSeg, productSeg] = await Promise.all([
+                segmentJewelry(dressedImage),
+                segmentJewelry(productBase64DataUri),
+            ]);
+            console.log(`[PRODUCTION] Segmentation complete — dressed: "${dressedSeg.label}", product: "${productSeg.label}"`);
+
+            const [dressedCrop, productCrop] = await Promise.all([
+                cropFromSegmentation(dressedImage, dressedSeg),
+                cropFromSegmentation(productBase64DataUri, productSeg),
+            ]);
+
+            let pixelResult: PixelFidelityResult = compareJewelryCrops(dressedCrop, productCrop);
+            console.log(`[PIXEL] Initial — pHash: ${pixelResult.scores.pHashDistance}, histogram: ${pixelResult.scores.histogramCorrelation.toFixed(3)}, passed: ${pixelResult.passed}, diagnosis: ${pixelResult.diagnosis}`);
+
+            if (pixelResult.passed) {
+                console.log('[PRODUCTION] Pixel validation passed on first attempt');
+                return dressedImage;
+            }
+
+            // Correction loop — max 3 iterations, keep best pHash score
+            let bestImage = dressedImage;
+            let bestPHash = pixelResult.scores.pHashDistance;
+            let currentImage = dressedImage;
 
             for (let attempt = 0; attempt < 3; attempt++) {
-                const fidelity = await validateJewelryFidelity(
-                    bestImage,
-                    `data:image/jpeg;base64,${productBase64}`,
-                    blueprint
-                );
-                console.log(`[FIDELITY] Attempt ${attempt + 1}/3 — score: ${fidelity.overallScore.toFixed(1)}, corrections: ${fidelity.corrections.length}`);
-
-                if (fidelity.passed || attempt === 2) {
-                    return bestImage;
+                const diagnosis = pixelResult.diagnosis;
+                let correctionPrompt: string;
+                if (diagnosis === 'shape') {
+                    correctionPrompt = "The jewelry SHAPE is wrong. Look at the reference image again. Reproduce the exact shape, chain type, stone cuts, and pendant form. Do NOT change the model or lighting.";
+                } else if (diagnosis === 'color') {
+                    correctionPrompt = `The jewelry COLOR/MATERIAL is wrong. The original shows ${blueprint.colorDetails}. Correct metal color and stone colors to match exactly.`;
+                } else {
+                    correctionPrompt = "The jewelry is significantly different. Regenerate placement with strict fidelity to the reference image.";
                 }
 
-                // Re-generate with corrections
-                const correctionPrompt = fidelity.corrections.join('. ');
-                const correctedParts: any[] = [
-                    { text: prompt + `\nMANDATORY CORRECTIONS FROM PREVIOUS ATTEMPT: ${correctionPrompt}. Fix these issues precisely.` }
+                console.log(`[PIXEL] Correction attempt ${attempt + 1}/3 — diagnosis: ${diagnosis}`);
+
+                // Send dressed image + product image + correction prompt (image-to-image edit)
+                const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
+                const correctionParts: any[] = [
+                    { text: correctionPrompt },
+                    { inlineData: { mimeType: 'image/png', data: currentData } },
+                    { inlineData: { mimeType: 'image/jpeg', data: productBase64 } },
                 ];
-                if (mannequinBase64) {
-                    correctedParts.push({
-                        inlineData: {
-                            mimeType: "image/png",
-                            data: mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64
-                        }
-                    });
-                }
-                correctedParts.push({ inlineData: { mimeType: "image/jpeg", data: productBase64 } });
 
-                const retryResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
-                    contents: [{ parts: correctedParts }],
+                const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                    contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
                         imageConfig: { imageSize: '4K' },
                     }
                 });
 
-                const retryImage = extractImage(retryResponse);
-                if (retryImage) {
-                    bestImage = retryImage;
+                let correctedImage: string | null = null;
+                for (const part of correctionResponse.candidates?.[0]?.content?.parts || []) {
+                    if (part.inlineData) {
+                        correctedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        break;
+                    }
+                }
+
+                if (!correctedImage) {
+                    console.log(`[PIXEL] Correction attempt ${attempt + 1} produced no image, keeping best`);
+                    continue;
+                }
+
+                // Re-segment and re-compare
+                const correctedSeg = await segmentJewelry(correctedImage);
+                const correctedCrop = await cropFromSegmentation(correctedImage, correctedSeg);
+                pixelResult = compareJewelryCrops(correctedCrop, productCrop);
+                console.log(`[PIXEL] Attempt ${attempt + 1} — pHash: ${pixelResult.scores.pHashDistance}, histogram: ${pixelResult.scores.histogramCorrelation.toFixed(3)}, passed: ${pixelResult.passed}`);
+
+                // Track best image by pHash score
+                if (pixelResult.scores.pHashDistance < bestPHash) {
+                    bestPHash = pixelResult.scores.pHashDistance;
+                    bestImage = correctedImage;
+                }
+                currentImage = correctedImage;
+
+                if (pixelResult.passed) {
+                    console.log(`[PRODUCTION] Pixel validation passed on correction attempt ${attempt + 1}`);
+                    return correctedImage;
                 }
             }
 
+            console.log(`[PRODUCTION] Pixel validation loop ended — returning best image (pHash: ${bestPHash})`);
             return bestImage;
         }
 
-        return candidateImage;
+        // No blueprint — skip validation
+        console.log('[PRODUCTION] No blueprint — skipping pixel validation');
+        return dressedImage;
     });
 };
 
@@ -769,9 +837,28 @@ export const generateProductionPhoto = async (
 export const generateStackedProductionPhoto = async (
     mannequinBase64: string | null,
     products: Array<{ imageUrl: string; category: string; name: string; blueprint?: JewelryBlueprint; dimensions?: ProductDimensions }>,
-    artisticDirection: string
+    artisticDirection: string,
+    bareCache?: { get: (key: string) => string | undefined; set: (key: string, img: string) => void }
 ): Promise<string> => {
+    console.log(`[STACK] Starting stacked production — ${products.length} products`);
     return withRetry(async () => {
+        // --- Bare generation with cache ---
+        let bareImage: string | null = null;
+        if (mannequinBase64) {
+            const poseKey = getPoseKeyForCategory(products[0]?.category || '');
+            const cacheKey = `${poseKey}-${artisticDirection.substring(0, 20)}`;
+            const cached = bareCache?.get(cacheKey);
+            if (cached) {
+                bareImage = cached;
+                console.log(`[STACK] Bare mannequin from cache — key: ${cacheKey}`);
+            } else {
+                console.log(`[STACK] Generating bare mannequin — pose: ${poseKey}`);
+                bareImage = await generateBareMannequin(mannequinBase64, artisticDirection, poseKey, products[0]?.category || '');
+                bareCache?.set(cacheKey, bareImage);
+                console.log(`[STACK] Bare mannequin generated and cached — key: ${cacheKey}`);
+            }
+        }
+
         const placementMap: Record<string, string> = {
             'sautoir-long': 'very long sautoir necklace hanging to navel/belly level, maximum drape length',
             'sautoir-court': 'sautoir necklace hanging to mid-chest/sternum level, medium-long drape',
@@ -785,15 +872,19 @@ export const generateStackedProductionPhoto = async (
             'bracelet': 'bracelet worn on the wrist',
         };
 
+        // Use bare image index offset: bare is image 1 if present
+        const imageBase = bareImage ? 2 : 1;
         const productDescriptions = products.map((p, i) => {
             const catLower = (p.category || p.name || '').toLowerCase();
             const placement = Object.entries(placementMap).find(([key]) => catLower.includes(key));
-            return `Product ${i + 1} (image ${mannequinBase64 ? i + 2 : i + 1}): ${p.category || p.name || 'jewelry'} — ${placement?.[1] || 'worn naturally on the model'}`;
+            return `Product ${i + 1} (image ${imageBase + i}): ${p.category || p.name || 'jewelry'} — ${placement?.[1] || 'worn naturally on the model'}`;
         }).join('\n');
 
         let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING — place ALL the following products on the SAME model simultaneously:\n${productDescriptions}\n\n`;
 
-        if (mannequinBase64) {
+        if (bareImage) {
+            prompt += `Image 1 is the bare model (no jewelry). Reconstruct this EXACT person — same face, same identity, same lighting. Add ONLY the jewelry products listed above. Do NOT alter the model's appearance in any way. `;
+        } else if (mannequinBase64) {
             prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference (image 1). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Same individual, different jewelry. `;
         } else {
             prompt += `MANNEQUIN: Professional fashion model. `;
@@ -828,7 +919,16 @@ export const generateStackedProductionPhoto = async (
 
         const parts: any[] = [{ text: prompt }];
 
-        if (mannequinBase64) {
+        // Use bare image instead of raw mannequinBase64 when available
+        if (bareImage) {
+            const bareData = bareImage.includes('base64,') ? bareImage.split(',')[1] : bareImage;
+            parts.push({
+                inlineData: {
+                    mimeType: 'image/png',
+                    data: bareData
+                }
+            });
+        } else if (mannequinBase64) {
             parts.push({
                 inlineData: {
                     mimeType: 'image/png',
@@ -837,11 +937,15 @@ export const generateStackedProductionPhoto = async (
             });
         }
 
+        // Fetch and attach all product images
+        const productBase64Map: Array<{ base64: string; dataUri: string }> = [];
         for (const product of products) {
             const productBase64 = await fetchImageAsBase64(product.imageUrl);
+            productBase64Map.push({ base64: productBase64, dataUri: `data:image/jpeg;base64,${productBase64}` });
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
         }
 
+        console.log('[STACK] Calling Gemini API for stacking');
         const response = await callGeminiAPI('gemini-3-pro-image-preview', {
             contents: [{ parts }],
             generationConfig: {
@@ -863,50 +967,93 @@ export const generateStackedProductionPhoto = async (
 
         let candidateImage = extractImage(response);
         if (!candidateImage) throw new Error("Aucune image générée pour le stacking.");
+        console.log('[STACK] Stacking image generated');
 
-        // Validate against first product with blueprint
-        const productWithBlueprint = products.find(p => p.blueprint);
-        if (productWithBlueprint?.blueprint) {
-            const refBase64 = await fetchImageAsBase64(productWithBlueprint.imageUrl);
+        // --- Pixel validation against first product with blueprint ---
+        const blueprintIndex = products.findIndex(p => p.blueprint);
+        if (blueprintIndex >= 0 && products[blueprintIndex].blueprint) {
+            const refProduct = products[blueprintIndex];
+            const refDataUri = productBase64Map[blueprintIndex].dataUri;
+            console.log('[STACK] Starting pixel validation against product with blueprint');
+
+            const [stackedSeg, productSeg] = await Promise.all([
+                segmentJewelry(candidateImage),
+                segmentJewelry(refDataUri),
+            ]);
+
+            const [stackedCrop, productCrop] = await Promise.all([
+                cropFromSegmentation(candidateImage, stackedSeg),
+                cropFromSegmentation(refDataUri, productSeg),
+            ]);
+
+            let pixelResult: PixelFidelityResult = compareJewelryCrops(stackedCrop, productCrop);
+            console.log(`[STACK-PIXEL] Initial — pHash: ${pixelResult.scores.pHashDistance}, histogram: ${pixelResult.scores.histogramCorrelation.toFixed(3)}, passed: ${pixelResult.passed}`);
+
+            if (pixelResult.passed) {
+                console.log('[STACK] Pixel validation passed');
+                return candidateImage;
+            }
+
+            // Correction loop
             let bestImage = candidateImage;
+            let bestPHash = pixelResult.scores.pHashDistance;
+            let currentImage = candidateImage;
 
             for (let attempt = 0; attempt < 3; attempt++) {
-                const fidelity = await validateJewelryFidelity(
-                    bestImage,
-                    `data:image/jpeg;base64,${refBase64}`,
-                    productWithBlueprint.blueprint
-                );
-                console.log(`[FIDELITY-STACK] Attempt ${attempt + 1}/3 — score: ${fidelity.overallScore.toFixed(1)}`);
+                const diagnosis = pixelResult.diagnosis;
+                let correctionPrompt: string;
+                if (diagnosis === 'shape') {
+                    correctionPrompt = "The jewelry SHAPE is wrong. Look at the reference image again. Reproduce the exact shape, chain type, stone cuts, and pendant form. Do NOT change the model or lighting.";
+                } else if (diagnosis === 'color') {
+                    correctionPrompt = `The jewelry COLOR/MATERIAL is wrong. The original shows ${refProduct.blueprint!.colorDetails}. Correct metal color and stone colors to match exactly.`;
+                } else {
+                    correctionPrompt = "The jewelry is significantly different. Regenerate placement with strict fidelity to the reference image.";
+                }
 
-                if (fidelity.passed || attempt === 2) return bestImage;
+                console.log(`[STACK-PIXEL] Correction attempt ${attempt + 1}/3 — diagnosis: ${diagnosis}`);
 
-                const correctionPrompt = fidelity.corrections.join('. ');
-                const correctedParts: any[] = [
-                    { text: prompt + `\nMANDATORY CORRECTIONS: ${correctionPrompt}` }
+                const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
+                const correctionParts: any[] = [
+                    { text: correctionPrompt },
+                    { inlineData: { mimeType: 'image/png', data: currentData } },
                 ];
-                if (mannequinBase64) {
-                    correctedParts.push({
-                        inlineData: {
-                            mimeType: 'image/png',
-                            data: mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64
-                        }
-                    });
-                }
-                for (const product of products) {
-                    const pBase64 = await fetchImageAsBase64(product.imageUrl);
-                    correctedParts.push({ inlineData: { mimeType: 'image/jpeg', data: pBase64 } });
+                // Re-attach all product images for reference
+                for (const pm of productBase64Map) {
+                    correctionParts.push({ inlineData: { mimeType: 'image/jpeg', data: pm.base64 } });
                 }
 
-                const retryResp = await callGeminiAPI('gemini-3-pro-image-preview', {
-                    contents: [{ parts: correctedParts }],
+                const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                    contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
                         imageConfig: { imageSize: '4K' },
                     }
                 });
-                const retryImg = extractImage(retryResp);
-                if (retryImg) bestImage = retryImg;
+
+                const correctedImage = extractImage(correctionResponse);
+                if (!correctedImage) {
+                    console.log(`[STACK-PIXEL] Correction attempt ${attempt + 1} produced no image, keeping best`);
+                    continue;
+                }
+
+                const correctedSeg = await segmentJewelry(correctedImage);
+                const correctedCrop = await cropFromSegmentation(correctedImage, correctedSeg);
+                pixelResult = compareJewelryCrops(correctedCrop, productCrop);
+                console.log(`[STACK-PIXEL] Attempt ${attempt + 1} — pHash: ${pixelResult.scores.pHashDistance}, histogram: ${pixelResult.scores.histogramCorrelation.toFixed(3)}, passed: ${pixelResult.passed}`);
+
+                if (pixelResult.scores.pHashDistance < bestPHash) {
+                    bestPHash = pixelResult.scores.pHashDistance;
+                    bestImage = correctedImage;
+                }
+                currentImage = correctedImage;
+
+                if (pixelResult.passed) {
+                    console.log(`[STACK] Pixel validation passed on correction attempt ${attempt + 1}`);
+                    return correctedImage;
+                }
             }
+
+            console.log(`[STACK] Pixel validation loop ended — returning best image (pHash: ${bestPHash})`);
             return bestImage;
         }
 
@@ -1015,6 +1162,200 @@ Write as a detailed, actionable production directive using imperative language. 
     }
 
     return extractedText;
+};
+
+/**
+ * Generate a bare mannequin (no jewelry) with pose-specific framing for a given category.
+ * Used as the first step of the two-pass pipeline: bare pose → dress with jewelry.
+ */
+export const generateBareMannequin = async (
+    mannequinBase64: string,
+    artisticDirection: string,
+    poseKey: PoseKey,
+    category: string
+): Promise<string> => {
+    console.log(`[BARE] Generating bare mannequin — pose: ${poseKey}, category: ${category}`);
+    return withRetry(async () => {
+        const poseFraming: Record<PoseKey, string> = {
+            neck: 'Bust shot, neck and upper chest clearly visible, face or 3/4 angle',
+            ear: 'Head tilted 3/4 profile, ear clearly visible, hair pulled back behind the ear',
+            wrist: 'Upper body with one forearm and wrist clearly visible, relaxed hand',
+            hand: 'Close-up of hands, fingers relaxed and spread naturally, well-lit',
+        };
+
+        let prompt = `Luxury commercial photography. 4K RESOLUTION. `;
+        prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference image. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. `;
+        prompt += `POSE & FRAMING: ${poseFraming[poseKey]}. `;
+        prompt += `CRITICAL: The model must NOT wear ANY jewelry whatsoever. Bare skin on neck, ears, wrists, fingers. No necklace, no earrings, no rings, no bracelets, no accessories. `;
+        prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
+
+        const imageData = mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64;
+
+        const parts: any[] = [
+            { text: prompt },
+            {
+                inlineData: {
+                    mimeType: 'image/png',
+                    data: imageData,
+                },
+            },
+        ];
+
+        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+            contents: [{ parts }],
+            generationConfig: {
+                responseModalities: ['IMAGE', 'TEXT'],
+                imageConfig: { imageSize: '4K' },
+            },
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+        throw new Error('No image generated for bare mannequin.');
+    });
+};
+
+/**
+ * Dress a bare mannequin with a specific jewelry piece.
+ * Second step of the two-pass pipeline: focuses purely on jewelry placement fidelity.
+ */
+export const dressWithJewelry = async (
+    bareBase64: string,
+    productBase64: string,
+    blueprint: JewelryBlueprint | null,
+    dimensions: ProductDimensions | null,
+    category: string
+): Promise<string> => {
+    console.log(`[DRESS] Dressing bare mannequin with jewelry — category: ${category}`);
+    return withRetry(async () => {
+        let prompt = `This is a photo of a model (image 1). Place the EXACT jewelry from the product reference (image 2) onto the model. Reproduce every visual detail with absolute fidelity: chain type, link pattern, stone shapes and cuts, pendant form, metal color, surface finish, proportions. Do NOT invent, add, remove, or modify any element of the jewelry. The jewelry in the output MUST be a pixel-faithful reproduction of the reference image. `;
+
+        const categoryLower = category.toLowerCase();
+        if (categoryLower.includes('sautoir-long')) {
+            prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
+        } else if (categoryLower.includes('sautoir')) {
+            prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
+        } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
+            prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
+        } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
+            prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
+        } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
+            prompt += `PLACEMENT: Earrings attached to earlobes, clearly visible. Head angled slightly to showcase the jewelry. Hair pulled back or tucked behind the ear if needed. `;
+        } else if (categoryLower.includes('bracelet')) {
+            prompt += `PLACEMENT: Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose. `;
+        }
+
+        // Inject jewelry blueprint if available
+        if (blueprint) {
+            prompt += `\nPRODUCT BLUEPRINT (REPRODUCE THIS EXACTLY):\n`;
+            prompt += `Material: ${blueprint.material}. `;
+            prompt += `Chain: ${blueprint.chainType}. `;
+            if (blueprint.stoneShape !== 'none') prompt += `Stones: ${blueprint.stoneShape}, set in ${blueprint.stoneSetting}. `;
+            if (blueprint.pendantShape !== 'none') prompt += `Pendant: ${blueprint.pendantShape}. `;
+            prompt += `Finish: ${blueprint.finish}. `;
+            prompt += `\nCRITICAL FIDELITY: ${blueprint.rawDescription} `;
+            prompt += `The jewelry in the output MUST match the product reference image EXACTLY — same chain type, same stone shapes, same proportions. Do NOT approximate or substitute any element. `;
+        }
+
+        if (dimensions) {
+            const anchors = buildDimensionAnchors(dimensions, category);
+            if (anchors) prompt += `\n${anchors} `;
+        }
+
+        prompt += `4K RESOLUTION. Do NOT alter the model's face, body, hair, or clothing — ONLY add the jewelry.`;
+
+        const bareData = bareBase64.includes('base64,') ? bareBase64.split(',')[1] : bareBase64;
+        const productData = productBase64.includes('base64,') ? productBase64.split(',')[1] : productBase64;
+
+        const parts: any[] = [
+            { text: prompt },
+            {
+                inlineData: {
+                    mimeType: 'image/png',
+                    data: bareData,
+                },
+            },
+            {
+                inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: productData,
+                },
+            },
+        ];
+
+        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+            contents: [{ parts }],
+            generationConfig: {
+                responseModalities: ['IMAGE', 'TEXT'],
+                imageConfig: { imageSize: '4K' },
+            },
+        });
+
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+        throw new Error('No image generated for jewelry dressing.');
+    });
+};
+
+/**
+ * Segment jewelry in an image — returns bounding box and mask for the jewelry region.
+ * Uses text-only model for fast structured output (no withRetry needed).
+ */
+export const segmentJewelry = async (
+    imageBase64: string
+): Promise<SegmentationResult> => {
+    console.log('[SEGMENT] Segmenting jewelry in image');
+
+    const mimeType = imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
+        : imageBase64.startsWith('data:image/webp') ? 'image/webp'
+        : 'image/png';
+    const imageData = imageBase64.includes('base64,') ? imageBase64.split(',')[1] : imageBase64;
+
+    try {
+        const response = await callGeminiAPI('gemini-2.5-flash', {
+            contents: [{
+                parts: [
+                    {
+                        text: 'Identify and segment the jewelry piece(s) in this image. Return a JSON object with: box_2d as [y0, x0, y1, x1] normalized 0-1000 (where 0 is top/left, 1000 is bottom/right), mask as a base64-encoded PNG grayscale probability map (white=jewelry, black=background), and label describing the jewelry. If multiple pieces, return the single bounding box that encompasses ALL jewelry. Return ONLY the JSON, no markdown fences.',
+                    },
+                    {
+                        inlineData: { mimeType, data: imageData },
+                    },
+                ],
+            }],
+            generationConfig: { responseModalities: ['TEXT'] },
+        });
+
+        const rawText = response.candidates?.[0]?.content?.parts
+            ?.filter((p: any) => p.text)
+            ?.map((p: any) => p.text)
+            ?.join('') || '';
+
+        // Strip markdown fences if present despite instructions
+        const cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+
+        console.log(`[SEGMENT] Result — label: ${parsed.label}, box: [${parsed.box_2d}]`);
+
+        return {
+            box_2d: parsed.box_2d as [number, number, number, number],
+            mask: parsed.mask || '',
+            label: parsed.label || 'jewelry',
+        };
+    } catch (err: any) {
+        console.warn('[SEGMENT] Parse error, returning full-image fallback:', err?.message || err);
+        return {
+            box_2d: [0, 0, 1000, 1000],
+            mask: '',
+            label: 'jewelry (fallback)',
+        };
+    }
 };
 
 /**
@@ -1160,102 +1501,6 @@ export const buildStackingDimensionAnchors = (
     return comparisons.length > 0
         ? `RELATIVE PROPORTIONS:\n${comparisons.join('\n')}`
         : '';
-};
-
-/**
- * Compare a generated production image against the original product image.
- * Returns fidelity scores and specific corrections if fidelity is low.
- */
-export const validateJewelryFidelity = async (
-    generatedBase64: string,
-    originalProductBase64: string,
-    blueprint: JewelryBlueprint
-): Promise<FidelityResult> => {
-    const generatedData = generatedBase64.includes('base64,')
-        ? generatedBase64.split(',')[1]
-        : generatedBase64;
-    const originalData = originalProductBase64.includes('base64,')
-        ? originalProductBase64.split(',')[1]
-        : originalProductBase64;
-
-    const prompt = `You are a jewelry quality control specialist. Compare the GENERATED production photo (image 1) against the ORIGINAL product photo (image 2).
-
-The original product has these characteristics:
-- Material: ${blueprint.material}
-- Chain type: ${blueprint.chainType}
-- Stone shape: ${blueprint.stoneShape}
-- Stone setting: ${blueprint.stoneSetting}
-- Pendant shape: ${blueprint.pendantShape}
-- Finish: ${blueprint.finish}
-- Details: ${blueprint.rawDescription}
-
-Score the GENERATED image's fidelity to the ORIGINAL on these 5 criteria (1=very different, 5=identical):
-
-Return a JSON object:
-{
-  "scores": {
-    "chain": <1-5 how accurately the chain type/style matches>,
-    "stones": <1-5 how accurately stone shapes and cuts match>,
-    "pendant": <1-5 how accurately pendant shape matches>,
-    "material": <1-5 how accurately metal color/finish matches>,
-    "proportions": <1-5 how accurately size proportions match>
-  },
-  "corrections": [
-    "specific correction instruction if a score is <= 3, e.g., 'The stones must be SQUARE princess-cut, not ROUND brilliant — the original clearly shows square faceted stones'",
-    "another correction if needed"
-  ]
-}
-
-CRITICAL RULES:
-- Be HARSH in scoring. If the chain type changed (e.g., cable became snake), score chain as 1-2.
-- If stone shapes changed (square became round), score stones as 1-2.
-- corrections array should contain SPECIFIC, ACTIONABLE instructions that could fix each low-scoring issue.
-- If a criterion doesn't apply (e.g., no stones), score it 5 and skip it in corrections.
-- Return ONLY the JSON, no markdown fences.`;
-
-    const response = await callGeminiAPI('gemini-2.5-flash', {
-        contents: [{
-            parts: [
-                { text: prompt },
-                { inlineData: { mimeType: 'image/png', data: generatedData } },
-                { inlineData: { mimeType: 'image/png', data: originalData } },
-            ],
-        }],
-        generationConfig: { responseModalities: ['TEXT'] },
-    });
-
-    const text = response.candidates?.[0]?.content?.parts
-        ?.filter((p: any) => p.text)
-        ?.map((p: any) => p.text)
-        ?.join('') || '';
-
-    try {
-        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const parsed = JSON.parse(cleaned);
-        const scores: FidelityScore = {
-            chain: Math.min(5, Math.max(1, parsed.scores?.chain || 3)),
-            stones: Math.min(5, Math.max(1, parsed.scores?.stones || 3)),
-            pendant: Math.min(5, Math.max(1, parsed.scores?.pendant || 3)),
-            material: Math.min(5, Math.max(1, parsed.scores?.material || 3)),
-            proportions: Math.min(5, Math.max(1, parsed.scores?.proportions || 3)),
-        };
-        const overallScore = Object.values(scores).reduce((a, b) => a + b, 0) / 5;
-        const corrections: string[] = parsed.corrections || [];
-
-        return {
-            scores,
-            overallScore,
-            corrections,
-            passed: overallScore >= 3.5 && corrections.length === 0,
-        };
-    } catch {
-        return {
-            scores: { chain: 3, stones: 3, pendant: 3, material: 3, proportions: 3 },
-            overallScore: 3,
-            corrections: [],
-            passed: true,
-        };
-    }
 };
 
 /**

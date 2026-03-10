@@ -18,9 +18,15 @@ interface ProductionStore {
   customPresets: CustomPreset[];
   addCustomPreset: (preset: CustomPreset) => void;
   removeCustomPreset: (id: string) => void;
+
+  // Bare mannequin cache (keyed by generation params hash)
+  bareCache: Record<string, string>;
+  setBareCache: (key: string, image: string) => void;
+  getBareCache: (key: string) => string | undefined;
+  clearBareCache: () => void;
 }
 
-export const useProductionStore = create<ProductionStore>((set) => ({
+export const useProductionStore = create<ProductionStore>((set, get) => ({
   queue: [],
   mannequinImage: null,
 
@@ -74,4 +80,9 @@ export const useProductionStore = create<ProductionStore>((set) => ({
       localStorage.setItem('production-custom-presets', JSON.stringify(updated));
       return { customPresets: updated };
     }),
+
+  bareCache: {},
+  setBareCache: (key, image) => set((state) => ({ bareCache: { ...state.bareCache, [key]: image } })),
+  getBareCache: (key) => get().bareCache[key],
+  clearBareCache: () => set({ bareCache: {} }),
 }));
