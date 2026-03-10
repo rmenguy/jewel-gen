@@ -310,22 +310,28 @@ export async function cropFromSegmentation(
   cropCtx.drawImage(img, x1, y1, cropW, cropH, 0, 0, cropW, cropH);
   const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
 
-  // Load and resize mask
-  const maskSrc = segmentation.mask.startsWith('data:')
-    ? segmentation.mask
-    : `data:image/png;base64,${segmentation.mask}`;
-  const maskImg = await loadImage(maskSrc);
-  const [, maskCtx] = createCanvas(cropW, cropH);
-  maskCtx.drawImage(maskImg, 0, 0, cropW, cropH);
-  const maskData = maskCtx.getImageData(0, 0, cropW, cropH);
+  // Apply mask if provided (non-empty base64)
+  if (segmentation.mask && segmentation.mask.length > 10) {
+    try {
+      const maskSrc = segmentation.mask.startsWith('data:')
+        ? segmentation.mask
+        : `data:image/png;base64,${segmentation.mask}`;
+      const maskImg = await loadImage(maskSrc);
+      const [, maskCtx] = createCanvas(cropW, cropH);
+      maskCtx.drawImage(maskImg, 0, 0, cropW, cropH);
+      const maskData = maskCtx.getImageData(0, 0, cropW, cropH);
 
-  // Apply mask: zero alpha where mask luminance < 128
-  const px = cropData.data;
-  const mx = maskData.data;
-  for (let i = 0; i < px.length; i += 4) {
-    const maskVal = 0.299 * mx[i] + 0.587 * mx[i + 1] + 0.114 * mx[i + 2];
-    if (maskVal < 128) {
-      px[i + 3] = 0;
+      const px = cropData.data;
+      const mx = maskData.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const maskVal = 0.299 * mx[i] + 0.587 * mx[i + 1] + 0.114 * mx[i + 2];
+        if (maskVal < 128) {
+          px[i + 3] = 0;
+        }
+      }
+    } catch {
+      // Mask load failed — use unmasked crop (bounding box only)
+      console.warn('[PIXEL] Mask load failed, using bounding box crop only');
     }
   }
 

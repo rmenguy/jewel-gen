@@ -1322,7 +1322,7 @@ export const segmentJewelry = async (
             contents: [{
                 parts: [
                     {
-                        text: 'Identify and segment the jewelry piece(s) in this image. Return a JSON object with: box_2d as [y0, x0, y1, x1] normalized 0-1000 (where 0 is top/left, 1000 is bottom/right), mask as a base64-encoded PNG grayscale probability map (white=jewelry, black=background), and label describing the jewelry. If multiple pieces, return the single bounding box that encompasses ALL jewelry. Return ONLY the JSON, no markdown fences.',
+                        text: 'Identify the jewelry piece(s) in this image. Return a JSON object with exactly two fields: "box_2d" as [y0, x0, y1, x1] normalized 0-1000 (where 0 is top/left, 1000 is bottom/right), and "label" as a short description. If multiple pieces, return ONE bounding box encompassing ALL jewelry. Return ONLY valid JSON, no markdown, no extra fields.',
                     },
                     {
                         inlineData: { mimeType, data: imageData },
@@ -1345,7 +1345,7 @@ export const segmentJewelry = async (
 
         return {
             box_2d: parsed.box_2d as [number, number, number, number],
-            mask: parsed.mask || '',
+            mask: '',
             label: parsed.label || 'jewelry',
         };
     } catch (err: any) {
