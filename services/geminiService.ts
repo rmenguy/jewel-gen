@@ -1,5 +1,5 @@
 import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, ProductDimensions, PoseKey, SegmentationResult } from "../types";
-import { compositeJewelryOnModel } from './pixelCompare';
+
 
 const CATALOG_SYSTEM_INSTRUCTION = `
 **ROLE**: Tu es CATALOG.ENGINE, un expert technique en scraping de données e-commerce.
@@ -657,60 +657,12 @@ export const generateProductionPhoto = async (
             }
         }
 
-        // --- Step C: Dress pass (for POSITIONING only — tells us where jewelry goes) ---
-        let dressedImage: string;
+        // --- Step C: Dress pass (final output) ---
         if (bareImage) {
-            console.log('[PRODUCTION] Dress pass for positioning reference');
-            dressedImage = await dressWithJewelry(bareImage, productBase64DataUri, blueprint || null, dimensions || null, category);
-            console.log('[PRODUCTION] Dress pass complete — extracting jewelry position');
-
-            // --- Step D: Composite pipeline (real packshot pixels) ---
-            // D1: Segment jewelry on dressed image → where it was placed
-            // D2: Segment jewelry on packshot → where it is in the packshot
-            // D3: Composite real packshot pixels onto bare mannequin
-            // D4: Harmonize with Gemini
-
-            const [dressedSeg, packshotSeg] = await Promise.all([
-                segmentJewelry(dressedImage),
-                segmentJewelry(productBase64DataUri),
-            ]);
-            console.log(`[COMPOSITE] Dressed bbox: [${dressedSeg.box_2d}], Packshot bbox: [${packshotSeg.box_2d}]`);
-
-            // D3: Paste real packshot jewelry onto bare mannequin at the dressed position
-            const compositeImage = await compositeJewelryOnModel(
-                bareImage,
-                productBase64DataUri,
-                packshotSeg.box_2d,
-                dressedSeg.box_2d,
-            );
-            console.log('[COMPOSITE] Packshot pixels composited onto bare mannequin');
-
-            // D4: Harmonize — Gemini blends edges, adds shadows, adjusts lighting
-            const compositeData = compositeImage.includes('base64,') ? compositeImage.split(',')[1] : compositeImage;
-            const harmonizeParts: any[] = [
-                { text: `This photo has a jewelry piece composited onto a model. The jewelry pixels are CORRECT and must NOT be changed. Your ONLY job: harmonize the edges where jewelry meets skin/clothing — add natural shadows, adjust lighting to match the scene, smooth any hard edges. Do NOT modify the jewelry shape, color, texture, or any detail. Do NOT modify the model. Only blend the transition zone. 4K resolution.` },
-                { inlineData: { mimeType: 'image/png', data: compositeData } },
-            ];
-
-            const harmonizeResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
-                contents: [{ parts: harmonizeParts }],
-                generationConfig: {
-                    responseModalities: ['IMAGE', 'TEXT'],
-                    imageConfig: { imageSize: '4K' },
-                    temperature: 0.1,
-                }
-            });
-
-            for (const part of harmonizeResponse.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    console.log('[PRODUCTION] Harmonization complete');
-                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                }
-            }
-
-            // If harmonization failed, return the raw composite (still has real pixels)
-            console.log('[PRODUCTION] Harmonization failed — returning raw composite');
-            return compositeImage;
+            console.log('[PRODUCTION] Dressing bare mannequin with jewelry');
+            const dressedImage = await dressWithJewelry(bareImage, productBase64DataUri, blueprint || null, dimensions || null, category);
+            console.log('[PRODUCTION] Done');
+            return dressedImage;
         } else {
             // Fallback: single-pass generation (no mannequin provided)
             console.log('[PRODUCTION] No mannequin — using single-pass generation');
