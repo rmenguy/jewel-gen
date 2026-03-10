@@ -732,76 +732,48 @@ export const generateProductionPhoto = async (
             dressedImage = fallbackImage;
         }
 
-        // --- Step D: AI validation (compares generated jewelry vs product reference) ---
-        console.log('[PRODUCTION] Starting AI fidelity validation');
+        // --- Step D: Single refinement pass (AI compare with Pro → 1 correction) ---
+        console.log('[PRODUCTION] Starting AI comparison (gemini-2.5-pro)');
 
         const aiValidation = await validateJewelryFidelityAI(dressedImage, productBase64DataUri, blueprint);
-        console.log(`[AI-VALID] Score: ${aiValidation.score}/10, passed: ${aiValidation.passed}, issues: ${aiValidation.issues.join('; ') || 'none'}`);
+        console.log(`[AI-VALID] Score: ${aiValidation.score}/10, issues: ${aiValidation.issues.join('; ') || 'none'}`);
 
+        // If score is good enough, return immediately
         if (aiValidation.passed) {
-            console.log('[PRODUCTION] AI validation passed on first attempt');
+            console.log('[PRODUCTION] AI validation passed — no refinement needed');
             return dressedImage;
         }
 
-        // Correction loop — max 2 iterations using AI-identified issues as guidance
-        let bestImage = dressedImage;
-        let bestScore = aiValidation.score;
-        let currentImage = dressedImage;
-        let currentValidation = aiValidation;
+        // Single correction pass using the specific issues identified by Pro
+        const issueList = aiValidation.issues.join('. ');
+        console.log(`[PRODUCTION] Refining — fixing: ${issueList}`);
 
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const issueList = currentValidation.issues.join('. ');
-            const correctionPrompt = `Image 1 is the JEWELRY REFERENCE. Image 2 is the current photo that needs correction. PROBLEMS TO FIX: ${issueList}. Reproduce the EXACT jewelry from the reference onto the model. Fix ONLY the listed problems. Do NOT alter the model.`;
+        const dressedData = dressedImage.includes('base64,') ? dressedImage.split(',')[1] : dressedImage;
+        const correctionParts: any[] = [
+            { text: `Image 1 is the JEWELRY REFERENCE (packshot). Image 2 is a photo where the jewelry was placed on a model but has these problems: ${issueList}. Regenerate image 2 with the jewelry EXACTLY matching image 1. Fix the listed problems. Keep the model identical.` },
+            { inlineData: { mimeType: 'image/jpeg', data: productBase64 } },
+            { inlineData: { mimeType: 'image/png', data: dressedData } },
+        ];
 
-            console.log(`[AI-VALID] Correction attempt ${attempt + 1}/2 — fixing: ${issueList}`);
-
-            const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
-            const correctionParts: any[] = [
-                { text: correctionPrompt },
-                { inlineData: { mimeType: 'image/jpeg', data: productBase64 } },
-                { inlineData: { mimeType: 'image/png', data: currentData } },
-            ];
-
-            const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
-                contents: [{ parts: correctionParts }],
-                generationConfig: {
-                    responseModalities: ['IMAGE', 'TEXT'],
-                    imageConfig: { imageSize: '4K' },
-                    temperature: 0.2,
-                }
-            });
-
-            let correctedImage: string | null = null;
-            for (const part of correctionResponse.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    correctedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                    break;
-                }
+        const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+            contents: [{ parts: correctionParts }],
+            generationConfig: {
+                responseModalities: ['IMAGE', 'TEXT'],
+                imageConfig: { imageSize: '4K' },
+                temperature: 0.2,
             }
+        });
 
-            if (!correctedImage) {
-                console.log(`[AI-VALID] Correction attempt ${attempt + 1} produced no image, keeping best`);
-                continue;
-            }
-
-            // Re-validate with AI
-            currentValidation = await validateJewelryFidelityAI(correctedImage, productBase64DataUri, blueprint);
-            console.log(`[AI-VALID] Attempt ${attempt + 1} — score: ${currentValidation.score}/10, passed: ${currentValidation.passed}`);
-
-            if (currentValidation.score > bestScore) {
-                bestScore = currentValidation.score;
-                bestImage = correctedImage;
-            }
-            currentImage = correctedImage;
-
-            if (currentValidation.passed) {
-                console.log(`[PRODUCTION] AI validation passed on correction attempt ${attempt + 1}`);
-                return correctedImage;
+        for (const part of correctionResponse.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                console.log('[PRODUCTION] Refinement pass complete');
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
             }
         }
 
-        console.log(`[PRODUCTION] AI validation loop ended — returning best image (score: ${bestScore}/10)`);
-        return bestImage;
+        // Correction failed to produce image — return original dressed image
+        console.log('[PRODUCTION] Refinement produced no image — returning dressed image');
+        return dressedImage;
     });
 };
 
@@ -944,75 +916,51 @@ export const generateStackedProductionPhoto = async (
         console.log('[STACK] Stacking image generated');
 
         // --- Pixel validation against first product with blueprint ---
-        // AI validation for stacking — use first product with blueprint as reference
+        // Single refinement pass for stacking — use first product with blueprint as reference
         const blueprintIndex = products.findIndex(p => p.blueprint);
         if (blueprintIndex >= 0 && products[blueprintIndex].blueprint) {
             const refProduct = products[blueprintIndex];
             const refDataUri = productBase64Map[blueprintIndex].dataUri;
-            console.log('[STACK] Starting AI validation against product with blueprint');
+            console.log('[STACK] Starting AI comparison (gemini-2.5-pro)');
 
             const aiValidation = await validateJewelryFidelityAI(candidateImage, refDataUri, refProduct.blueprint!);
-            console.log(`[STACK-AI] Score: ${aiValidation.score}/10, passed: ${aiValidation.passed}, issues: ${aiValidation.issues.join('; ') || 'none'}`);
+            console.log(`[STACK-AI] Score: ${aiValidation.score}/10, issues: ${aiValidation.issues.join('; ') || 'none'}`);
 
             if (aiValidation.passed) {
-                console.log('[STACK] AI validation passed');
+                console.log('[STACK] AI validation passed — no refinement needed');
                 return candidateImage;
             }
 
-            // Correction loop
-            let bestImage = candidateImage;
-            let bestScore = aiValidation.score;
-            let currentImage = candidateImage;
-            let currentValidation = aiValidation;
+            // Single correction pass
+            const issueList = aiValidation.issues.join('. ');
+            console.log(`[STACK] Refining — fixing: ${issueList}`);
 
-            for (let attempt = 0; attempt < 2; attempt++) {
-                const issueList = currentValidation.issues.join('. ');
-                const correctionPrompt = `PROBLEMS TO FIX: ${issueList}. Reproduce the EXACT jewelry from the reference images onto the model. Fix ONLY the listed problems. Do NOT alter the model.`;
-
-                console.log(`[STACK-AI] Correction attempt ${attempt + 1}/2 — fixing: ${issueList}`);
-
-                const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
-                const correctionParts: any[] = [
-                    { text: correctionPrompt },
-                ];
-                // Product images first for reference priority
-                for (const pm of productBase64Map) {
-                    correctionParts.push({ inlineData: { mimeType: 'image/jpeg', data: pm.base64 } });
-                }
-                correctionParts.push({ inlineData: { mimeType: 'image/png', data: currentData } });
-
-                const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
-                    contents: [{ parts: correctionParts }],
-                    generationConfig: {
-                        responseModalities: ['IMAGE', 'TEXT'],
-                        imageConfig: { imageSize: '4K' },
-                        temperature: 0.2,
-                    }
-                });
-
-                const correctedImage = extractImage(correctionResponse);
-                if (!correctedImage) {
-                    console.log(`[STACK-AI] Correction attempt ${attempt + 1} produced no image, keeping best`);
-                    continue;
-                }
-
-                currentValidation = await validateJewelryFidelityAI(correctedImage, refDataUri, refProduct.blueprint!);
-                console.log(`[STACK-AI] Attempt ${attempt + 1} — score: ${currentValidation.score}/10, passed: ${currentValidation.passed}`);
-
-                if (currentValidation.score > bestScore) {
-                    bestScore = currentValidation.score;
-                    bestImage = correctedImage;
-                }
-                currentImage = correctedImage;
-
-                if (currentValidation.passed) {
-                    console.log(`[STACK] AI validation passed on correction attempt ${attempt + 1}`);
-                    return correctedImage;
-                }
+            const currentData = candidateImage.includes('base64,') ? candidateImage.split(',')[1] : candidateImage;
+            const correctionParts: any[] = [
+                { text: `The jewelry in this photo has these problems vs the references: ${issueList}. Regenerate with jewelry EXACTLY matching the reference images. Fix the listed problems. Keep the model identical.` },
+            ];
+            // Product images first for reference priority
+            for (const pm of productBase64Map) {
+                correctionParts.push({ inlineData: { mimeType: 'image/jpeg', data: pm.base64 } });
             }
+            correctionParts.push({ inlineData: { mimeType: 'image/png', data: currentData } });
 
-            console.log(`[STACK] AI validation loop ended — returning best image (score: ${bestScore}/10)`);
-            return bestImage;
+            const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                contents: [{ parts: correctionParts }],
+                generationConfig: {
+                    responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { imageSize: '4K' },
+                    temperature: 0.2,
+                }
+            });
+
+            const correctedImage = extractImage(correctionResponse);
+            if (correctedImage) {
+                console.log('[STACK] Refinement pass complete');
+                return correctedImage;
+            }
+            console.log('[STACK] Refinement produced no image — returning original');
+            return candidateImage;
         }
 
         return candidateImage;
@@ -1296,7 +1244,7 @@ Return ONLY valid JSON, no markdown:
 If the jewelry is a faithful reproduction (even if angle/lighting differ), score 7+. Only list issues that are actual differences in the jewelry itself.${blueprint ? ` Key details to check: ${blueprint.rawDescription}` : ''}`;
 
     try {
-        const response = await callGeminiAPI('gemini-2.5-flash', {
+        const response = await callGeminiAPI('gemini-2.5-pro', {
             contents: [{
                 parts: [
                     { text: prompt },
