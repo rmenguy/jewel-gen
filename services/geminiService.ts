@@ -889,7 +889,11 @@ export const generateStackedProductionPhoto = async (
         } else {
             prompt += `MANNEQUIN: Professional fashion model. `;
         }
-        prompt += `Each piece of jewelry must be clearly visible and worn in its proper position. No overlap or obstruction between pieces. `;
+        prompt += `CRITICAL STACKING RULES:
+- Each jewelry piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together. Every necklace/sautoir is an independent piece with its own clasp and chain.
+- Each piece must hang at its own LENGTH with natural gravity — chains drape freely, pendants swing with weight, nothing is fused to the skin or to other pieces.
+- Maintain visible GAPS between layered necklaces — shorter pieces sit higher, longer pieces hang lower. They must NOT overlap or tangle.
+- Each piece must be clearly identifiable as a separate item matching its reference image. `;
 
         const earringCount = products.filter(p => {
             const cat = (p.category || p.name || '').toLowerCase();
@@ -1231,15 +1235,15 @@ export const dressWithJewelry = async (
 ): Promise<string> => {
     console.log(`[DRESS] Dressing bare mannequin with jewelry — category: ${category}`);
     return withRetry(async () => {
-        let prompt = `This is a photo of a model (image 1). Place the EXACT jewelry from the product reference (image 2) onto the model. Reproduce every visual detail with absolute fidelity: chain type, link pattern, stone shapes and cuts, pendant form, metal color, surface finish, proportions. Do NOT invent, add, remove, or modify any element of the jewelry. The jewelry in the output MUST be a pixel-faithful reproduction of the reference image. `;
+        let prompt = `This is a photo of a model (image 1). Place the EXACT jewelry from the product reference (image 2) onto the model. Reproduce every visual detail with absolute fidelity: chain type, link pattern, stone shapes and cuts, pendant form, metal color, surface finish, proportions. Do NOT invent, add, remove, or modify any element of the jewelry. The jewelry in the output MUST be a pixel-faithful reproduction of the reference image. PHYSICS: The jewelry must obey gravity — chains drape naturally with weight, pendants hang freely, nothing is painted flat onto the skin. There must be visible depth and shadow between the chain and the body. The jewelry sits ON the body, not fused to it. `;
 
         const categoryLower = category.toLowerCase();
         if (categoryLower.includes('sautoir-long')) {
-            prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
+            prompt += `PLACEMENT: Very long sautoir hanging freely from the neck to navel level. The chain must drape with natural gravity — visible arc and swing, NOT flat against the body. Pendants/charms hang with their own weight at the bottom of the chain. `;
         } else if (categoryLower.includes('sautoir')) {
-            prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
+            prompt += `PLACEMENT: Sautoir hanging from the neck to mid-chest/sternum level. The chain drapes freely with natural gravity — visible arc, NOT pressed flat against the skin. Pendants swing naturally at the chain's lowest point. `;
         } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
-            prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
+            prompt += `PLACEMENT: Necklace sitting on or just below the collarbone. The chain follows the neck's curve naturally with slight drape — NOT painted onto the skin. `;
         } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
             prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
         } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
