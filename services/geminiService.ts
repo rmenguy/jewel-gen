@@ -1244,7 +1244,7 @@ Return ONLY valid JSON, no markdown:
 If the jewelry is a faithful reproduction (even if angle/lighting differ), score 7+. Only list issues that are actual differences in the jewelry itself.${blueprint ? ` Key details to check: ${blueprint.rawDescription}` : ''}`;
 
     try {
-        const response = await callGeminiAPI('gemini-2.5-pro', {
+        const response = await callGeminiAPI('gemini-3-flash-preview', {
             contents: [{
                 parts: [
                     { text: prompt },
