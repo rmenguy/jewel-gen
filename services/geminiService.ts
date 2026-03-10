@@ -1,4 +1,5 @@
 import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, ProductDimensions, PoseKey, SegmentationResult } from "../types";
+import { compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
 **ROLE**: Tu es CATALOG.ENGINE, un expert technique en scraping de données e-commerce.
@@ -656,58 +657,78 @@ export const generateProductionPhoto = async (
             }
         }
 
-        // --- Step C: Dress pass ---
+        // --- Step C: Dress pass (for POSITIONING only — tells us where jewelry goes) ---
         let dressedImage: string;
         if (bareImage) {
-            console.log('[PRODUCTION] Dressing bare mannequin with jewelry');
+            console.log('[PRODUCTION] Dress pass for positioning reference');
             dressedImage = await dressWithJewelry(bareImage, productBase64DataUri, blueprint || null, dimensions || null, category);
-            console.log('[PRODUCTION] Dress pass complete');
-        } else {
-            // Fallback: single-pass generation (no mannequin provided)
-            console.log('[PRODUCTION] No mannequin — using single-pass fallback');
-            let prompt = `Luxury commercial photography. 4K RESOLUTION. The product ${category ? `(${category})` : ''} is the centerpiece. `;
-            prompt += `MANNEQUIN: Worn by a realistic model. `;
+            console.log('[PRODUCTION] Dress pass complete — extracting jewelry position');
 
-            const categoryLower = category.toLowerCase();
-            if (categoryLower.includes('sautoir-long')) {
-                prompt += `PLACEMENT: Very long sautoir necklace hanging freely from the neck, falling to navel/belly level. The chain/pendant drapes well below the chest with maximum visible length. NOT a short necklace — this is an extra-long sautoir reaching the navel. `;
-            } else if (categoryLower.includes('sautoir')) {
-                prompt += `PLACEMENT: Long necklace (sautoir) hanging from the neck, falling to mid-chest/sternum level. The chain drapes to the middle of the chest — NOT to the waist, NOT to the collarbone. Medium-long sautoir proportions, sternum-level. `;
-            } else if (categoryLower.includes('collier') || categoryLower.includes('necklace')) {
-                prompt += `PLACEMENT: Necklace worn close to the neck, sitting on or just below the collarbone area. Short to medium length, hugging the neckline. `;
-            } else if (categoryLower.includes('bague') || categoryLower.includes('ring')) {
-                prompt += `PLACEMENT: Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible. `;
-            } else if (categoryLower.includes('boucles') || categoryLower.includes('earring')) {
-                prompt += `PLACEMENT: Earrings attached to earlobes, clearly visible. Head angled slightly to showcase the jewelry. Hair pulled back or tucked behind the ear if needed. `;
-            } else if (categoryLower.includes('bracelet')) {
-                prompt += `PLACEMENT: Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose. `;
-            }
+            // --- Step D: Composite pipeline (real packshot pixels) ---
+            // D1: Segment jewelry on dressed image → where it was placed
+            // D2: Segment jewelry on packshot → where it is in the packshot
+            // D3: Composite real packshot pixels onto bare mannequin
+            // D4: Harmonize with Gemini
 
-            if (blueprint) {
-                prompt += `\nPRODUCT BLUEPRINT (REPRODUCE THIS EXACTLY):\n`;
-                prompt += `Material: ${blueprint.material}. `;
-                prompt += `Chain: ${blueprint.chainType}. `;
-                if (blueprint.stoneShape !== 'none') prompt += `Stones: ${blueprint.stoneShape}, set in ${blueprint.stoneSetting}. `;
-                if (blueprint.pendantShape !== 'none') prompt += `Pendant: ${blueprint.pendantShape}. `;
-                prompt += `Finish: ${blueprint.finish}. `;
-                prompt += `\nCRITICAL FIDELITY: ${blueprint.rawDescription} `;
-                prompt += `The jewelry in the output MUST match the product reference image EXACTLY — same chain type, same stone shapes, same proportions. Do NOT approximate or substitute any element. `;
-            }
+            const [dressedSeg, packshotSeg] = await Promise.all([
+                segmentJewelry(dressedImage),
+                segmentJewelry(productBase64DataUri),
+            ]);
+            console.log(`[COMPOSITE] Dressed bbox: [${dressedSeg.box_2d}], Packshot bbox: [${packshotSeg.box_2d}]`);
 
-            if (dimensions) {
-                const anchors = buildDimensionAnchors(dimensions, category);
-                if (anchors) prompt += `\n${anchors} `;
-            }
+            // D3: Paste real packshot jewelry onto bare mannequin at the dressed position
+            const compositeImage = await compositeJewelryOnModel(
+                bareImage,
+                productBase64DataUri,
+                packshotSeg.box_2d,
+                dressedSeg.box_2d,
+            );
+            console.log('[COMPOSITE] Packshot pixels composited onto bare mannequin');
 
-            prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
+            // D4: Harmonize — Gemini blends edges, adds shadows, adjusts lighting
+            const compositeData = compositeImage.includes('base64,') ? compositeImage.split(',')[1] : compositeImage;
+            const harmonizeParts: any[] = [
+                { text: `This photo has a jewelry piece composited onto a model. The jewelry pixels are CORRECT and must NOT be changed. Your ONLY job: harmonize the edges where jewelry meets skin/clothing — add natural shadows, adjust lighting to match the scene, smooth any hard edges. Do NOT modify the jewelry shape, color, texture, or any detail. Do NOT modify the model. Only blend the transition zone. 4K resolution.` },
+                { inlineData: { mimeType: 'image/png', data: compositeData } },
+            ];
 
-            const parts: any[] = [{ text: prompt }];
-            parts.push({
-                inlineData: {
-                    mimeType: "image/jpeg",
-                    data: productBase64
+            const harmonizeResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                contents: [{ parts: harmonizeParts }],
+                generationConfig: {
+                    responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { imageSize: '4K' },
+                    temperature: 0.1,
                 }
             });
+
+            for (const part of harmonizeResponse.candidates?.[0]?.content?.parts || []) {
+                if (part.inlineData) {
+                    console.log('[PRODUCTION] Harmonization complete');
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+            }
+
+            // If harmonization failed, return the raw composite (still has real pixels)
+            console.log('[PRODUCTION] Harmonization failed — returning raw composite');
+            return compositeImage;
+        } else {
+            // Fallback: single-pass generation (no mannequin provided)
+            console.log('[PRODUCTION] No mannequin — using single-pass generation');
+            let prompt = `Image 1 is the JEWELRY REFERENCE. Generate a luxury photo of a model wearing this EXACT jewelry. COPY every detail from the reference. ${category ? `Category: ${category}.` : ''} `;
+
+            if (blueprint) {
+                prompt += `Key details: ${blueprint.rawDescription} `;
+            }
+            if (dimensions) {
+                const anchors = buildDimensionAnchors(dimensions, category);
+                if (anchors) prompt += anchors + ' ';
+            }
+            prompt += `Scene: ${artisticDirection}. 4K resolution.`;
+
+            const parts: any[] = [
+                { text: prompt },
+                { inlineData: { mimeType: "image/jpeg", data: productBase64 } },
+            ];
 
             const response = await callGeminiAPI('gemini-3-pro-image-preview', {
                 contents: [{ parts }],
@@ -718,62 +739,13 @@ export const generateProductionPhoto = async (
                 }
             });
 
-            const extractImage = (resp: any): string | null => {
-                for (const part of resp.candidates?.[0]?.content?.parts || []) {
-                    if (part.inlineData) {
-                        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                    }
+            for (const part of response.candidates?.[0]?.content?.parts || []) {
+                if (part.inlineData) {
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                 }
-                return null;
-            };
-
-            const fallbackImage = extractImage(response);
-            if (!fallbackImage) throw new Error("Aucune image générée.");
-            dressedImage = fallbackImage;
-        }
-
-        // --- Step D: Single refinement pass (AI compare with Pro → 1 correction) ---
-        console.log('[PRODUCTION] Starting AI comparison (gemini-2.5-pro)');
-
-        const aiValidation = await validateJewelryFidelityAI(dressedImage, productBase64DataUri, blueprint);
-        console.log(`[AI-VALID] Score: ${aiValidation.score}/10, issues: ${aiValidation.issues.join('; ') || 'none'}`);
-
-        // If score is good enough, return immediately
-        if (aiValidation.passed) {
-            console.log('[PRODUCTION] AI validation passed — no refinement needed');
-            return dressedImage;
-        }
-
-        // Single correction pass using the specific issues identified by Pro
-        const issueList = aiValidation.issues.join('. ');
-        console.log(`[PRODUCTION] Refining — fixing: ${issueList}`);
-
-        const dressedData = dressedImage.includes('base64,') ? dressedImage.split(',')[1] : dressedImage;
-        const correctionParts: any[] = [
-            { text: `Image 1 is the JEWELRY REFERENCE (packshot). Image 2 is a photo where the jewelry was placed on a model but has these problems: ${issueList}. Regenerate image 2 with the jewelry EXACTLY matching image 1. Fix the listed problems. Keep the model identical.` },
-            { inlineData: { mimeType: 'image/jpeg', data: productBase64 } },
-            { inlineData: { mimeType: 'image/png', data: dressedData } },
-        ];
-
-        const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
-            contents: [{ parts: correctionParts }],
-            generationConfig: {
-                responseModalities: ['IMAGE', 'TEXT'],
-                imageConfig: { imageSize: '4K' },
-                temperature: 0.2,
             }
-        });
-
-        for (const part of correctionResponse.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                console.log('[PRODUCTION] Refinement pass complete');
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+            throw new Error("Aucune image générée.");
         }
-
-        // Correction failed to produce image — return original dressed image
-        console.log('[PRODUCTION] Refinement produced no image — returning dressed image');
-        return dressedImage;
     });
 };
 
