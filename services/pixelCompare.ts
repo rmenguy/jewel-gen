@@ -1,4 +1,4 @@
-// pixelCompare.ts — Client-side jewelry image comparison + compositing.
+// pixelCompare.ts — Client-side jewelry image comparison via perceptual hashing + color histograms.
 // Zero external dependencies. Uses only Canvas API.
 
 // ---------------------------------------------------------------------------
@@ -376,86 +376,4 @@ export function compareJewelryCrops(cropA: ImageData, cropB: ImageData): PixelFi
     passed: !shapeFail && !colorFail,
     diagnosis,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Jewelry compositing — paste real packshot pixels onto bare mannequin
-// ---------------------------------------------------------------------------
-
-/**
- * Remove white/light background from a packshot image.
- * Pixels with luminosity > threshold become transparent.
- */
-function removeWhiteBackground(imageData: ImageData, threshold = 230): ImageData {
-  const px = imageData.data;
-  for (let i = 0; i < px.length; i += 4) {
-    const lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-    if (lum > threshold) {
-      px[i + 3] = 0; // fully transparent
-    } else if (lum > threshold - 20) {
-      // Soft edge — fade transparency for anti-aliasing
-      const alpha = Math.round(((threshold - lum) / 20) * 255);
-      px[i + 3] = Math.min(px[i + 3], alpha);
-    }
-  }
-  return imageData;
-}
-
-/**
- * Composite real packshot jewelry onto a bare mannequin image.
- *
- * @param bareBase64 — bare mannequin (no jewelry) as base64 data URI
- * @param packshotBase64 — product packshot as base64 data URI
- * @param packshotBox — bbox of jewelry in packshot [y1,x1,y2,x2] normalized 0-1000
- * @param targetBox — bbox where jewelry should go on mannequin [y1,x1,y2,x2] normalized 0-1000
- * @returns composite image as base64 data URI (PNG)
- */
-export async function compositeJewelryOnModel(
-  bareBase64: string,
-  packshotBase64: string,
-  packshotBox: [number, number, number, number],
-  targetBox: [number, number, number, number],
-): Promise<string> {
-  // Load both images
-  const bareSrc = bareBase64.startsWith('data:') ? bareBase64 : `data:image/png;base64,${bareBase64}`;
-  const packSrc = packshotBase64.startsWith('data:') ? packshotBase64 : `data:image/png;base64,${packshotBase64}`;
-
-  const [bareImg, packImg] = await Promise.all([loadImage(bareSrc), loadImage(packSrc)]);
-
-  const bw = bareImg.naturalWidth;
-  const bh = bareImg.naturalHeight;
-  const pw = packImg.naturalWidth;
-  const ph = packImg.naturalHeight;
-
-  // --- Step 1: Crop jewelry from packshot using bbox ---
-  const [py1, px1, py2, px2] = packshotBox;
-  const cropX = Math.round((px1 / 1000) * pw);
-  const cropY = Math.round((py1 / 1000) * ph);
-  const cropW = Math.max(Math.round(((px2 - px1) / 1000) * pw), 1);
-  const cropH = Math.max(Math.round(((py2 - py1) / 1000) * ph), 1);
-
-  const [cropCanvas, cropCtx] = createCanvas(cropW, cropH);
-  cropCtx.drawImage(packImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-  let croppedData = cropCtx.getImageData(0, 0, cropW, cropH);
-
-  // --- Step 2: Remove white background ---
-  croppedData = removeWhiteBackground(croppedData);
-  cropCtx.putImageData(croppedData, 0, 0);
-
-  // --- Step 3: Calculate target position and scale on bare mannequin ---
-  const [ty1, tx1, ty2, tx2] = targetBox;
-  const targetX = Math.round((tx1 / 1000) * bw);
-  const targetY = Math.round((ty1 / 1000) * bh);
-  const targetW = Math.max(Math.round(((tx2 - tx1) / 1000) * bw), 1);
-  const targetH = Math.max(Math.round(((ty2 - ty1) / 1000) * bh), 1);
-
-  // --- Step 4: Composite onto bare mannequin ---
-  const [outCanvas, outCtx] = createCanvas(bw, bh);
-  // Draw bare mannequin as base
-  outCtx.drawImage(bareImg, 0, 0);
-  // Draw cropped jewelry (with transparent bg) scaled to target bbox
-  outCtx.drawImage(cropCanvas, 0, 0, cropW, cropH, targetX, targetY, targetW, targetH);
-
-  // --- Step 5: Export as base64 PNG ---
-  return outCanvas.toDataURL('image/png');
 }
