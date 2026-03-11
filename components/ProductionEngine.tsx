@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
 import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions, PoseKey } from '../types';
 import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting } from '../services/geminiService';
@@ -47,16 +47,18 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [extractedPrompt, setExtractedPrompt] = useState('');
   const [presetName, setPresetName] = useState('');
   const [fidelityStatus, setFidelityStatus] = useState<Record<string, string>>({});
+  const [blueprintEnabled, setBlueprintEnabled] = useState(false);
   const [importedBaseImage, setImportedBaseImage] = useState<string | null>(null);
   const [refineMode, setRefineMode] = useState(false);
   const [refineCategory, setRefineCategory] = useState('collier');
   const [refineDims, setRefineDims] = useState<{ chainLength?: number; pendantHeight?: number; pendantWidth?: number }>({});
   const [refineUndo, setRefineUndo] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
+  const [variantIndex, setVariantIndex] = useState(0);
   const refineFileRef = useRef<HTMLInputElement>(null);
   const baseImportRef = useRef<HTMLInputElement>(null);
 
-  const { customPresets, addCustomPreset, removeCustomPreset, setBareCache, getBareCache, clearBareCache } = useProductionStore();
+  const { customPresets, addCustomPreset, removeCustomPreset, removeFromQueue, setBareCache, getBareCache, clearBareCache } = useProductionStore();
 
   const stats = useMemo(() => {
       return {
@@ -224,14 +226,16 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 .replace('{jewelry_description}', jewelryDesc)
                 .replace('{background_context}', backgroundCtx);
 
-            // Fidelity Engine: pre-analyze jewelry
+            // Fidelity Engine: pre-analyze jewelry (only if toggle enabled)
             let blueprint: JewelryBlueprint | undefined;
-            try {
-                setFidelityStatus(prev => ({ ...prev, [item.id]: 'Analyzing jewelry...' }));
-                blueprint = await analyzeJewelryProduct(item.imageUrl);
-                console.log('[FIDELITY] Blueprint:', blueprint.rawDescription.substring(0, 100));
-            } catch (err) {
-                console.warn('[FIDELITY] Pre-analysis failed, proceeding without blueprint:', err);
+            if (blueprintEnabled) {
+                try {
+                    setFidelityStatus(prev => ({ ...prev, [item.id]: 'Analyzing jewelry...' }));
+                    blueprint = await analyzeJewelryProduct(item.imageUrl);
+                    console.log('[FIDELITY] Blueprint:', blueprint.rawDescription.substring(0, 100));
+                } catch (err) {
+                    console.warn('[FIDELITY] Pre-analysis failed, proceeding without blueprint:', err);
+                }
             }
 
             // Build dimensions if provided
@@ -240,9 +244,9 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
                     : undefined;
 
-            setFidelityStatus(prev => ({ ...prev, [item.id]: 'Generating (bare + dress)...' }));
+            setFidelityStatus(prev => ({ ...prev, [item.id]: 'Generating...' }));
 
-            const resultImage = await generateProductionPhoto(
+            const resultImages = await generateProductionPhoto(
                 mannequinImage,
                 item.imageUrl,
                 itemPrompt,
@@ -252,8 +256,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 bareCache
             );
 
-            console.log('[PRODUCTION] Generation successful for item:', item.id);
-            updateItemStatus(item.id, { status: 'COMPLETED', resultImage });
+            console.log('[PRODUCTION] Generation successful for item:', item.id, `— ${resultImages.length} variants`);
+            updateItemStatus(item.id, { status: 'COMPLETED', resultImage: resultImages[0], resultImages });
             setFidelityStatus(prev => ({ ...prev, [item.id]: '\u2713 Complete' }));
             // Clear fidelity status after a brief delay
             setTimeout(() => {
@@ -298,10 +302,13 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   };
 
   const handleDownloadSelected = () => {
-    const targets = queue.filter(q => selectedForDownload.has(q.id) && q.status === 'COMPLETED' && q.resultImage);
+    const targets = queue.filter(q => selectedForDownload.has(q.id) && q.status === 'COMPLETED' && (q.resultImages?.length || q.resultImage));
     for (const item of targets) {
-        const base64 = item.resultImage!.includes('base64,') ? item.resultImage! : `data:image/png;base64,${item.resultImage!}`;
-        downloadBase64Image(base64, `production_4K_${item.sku}_${Date.now()}.png`);
+        const images = item.resultImages || (item.resultImage ? [item.resultImage] : []);
+        images.forEach((img, idx) => {
+            const base64 = img.includes('base64,') ? img : `data:image/png;base64,${img}`;
+            downloadBase64Image(base64, `production_4K_${item.sku}_v${idx + 1}_${Date.now()}.png`);
+        });
     }
   };
 
@@ -368,11 +375,21 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
   const runnableCount = queue.filter(i => i.status === 'PENDING' || i.status === 'ERROR').length;
 
+  useEffect(() => { setVariantIndex(0); }, [selectedItemId]);
+
   const activeImage = useMemo(() => {
       if (importedBaseImage) return importedBaseImage;
-      if (selectedItem?.status === 'COMPLETED' && selectedItem?.resultImage) return selectedItem.resultImage;
+      if (selectedItem?.status === 'COMPLETED') {
+          const images = selectedItem.resultImages || (selectedItem.resultImage ? [selectedItem.resultImage] : []);
+          if (images.length > 0) return images[Math.min(variantIndex, images.length - 1)];
+      }
       return null;
-  }, [importedBaseImage, selectedItem]);
+  }, [importedBaseImage, selectedItem, variantIndex]);
+
+  const variantCount = useMemo(() => {
+      if (!selectedItem || selectedItem.status !== 'COMPLETED') return 0;
+      return selectedItem.resultImages?.length || (selectedItem.resultImage ? 1 : 0);
+  }, [selectedItem]);
 
   const handleBaseImport = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -482,8 +499,20 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                         {(stackingMode ? stackSelection.has(item.id) : selectedForDownload.has(item.id)) && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
                                     </div>
                                 </div>
-                                {item.status === 'COMPLETED' && item.resultImage ? <img src={item.resultImage} className="w-full h-full object-cover" loading="lazy" /> : <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[8px] font-mono text-gray-400 break-all px-1 text-center">{item.sku}</span></div>}
-                                <div className="absolute top-1 right-1 z-10"><StatusDot status={item.status} /></div>
+                                {item.status === 'COMPLETED' && item.resultImage ? (
+                                    <div className="relative w-full h-full">
+                                        <img src={item.resultImage} className="w-full h-full object-cover" loading="lazy" />
+                                        {(item.resultImages?.length || 0) > 1 && (
+                                            <div className="absolute bottom-1 left-1 bg-indigo-600 text-white text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">{item.resultImages!.length}</div>
+                                        )}
+                                    </div>
+                                ) : <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[8px] font-mono text-gray-400 break-all px-1 text-center">{item.sku}</span></div>}
+                                <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5">
+                                    <button onClick={(e) => { e.stopPropagation(); removeFromQueue(item.id); if (selectedItemId === item.id) setSelectedItemId(null); }} className="w-4 h-4 rounded-full bg-black/50 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Supprimer">
+                                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                    <StatusDot status={item.status} />
+                                </div>
                                 {/* Per-item category selector */}
                                 <div className="absolute bottom-0 left-0 right-0 z-20" onClick={(e) => e.stopPropagation()}>
                                     <div className="bg-black/60 backdrop-blur-sm px-1 py-0.5 space-y-0.5">
@@ -556,10 +585,15 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         )}
                     </button>
                 )}
-                <Button className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 border-none shadow-sm" onClick={startProduction} isLoading={isProcessing}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    EXECUTE BATCH {String(runnableCount).padStart(3, '0')}
-                </Button>
+                <div className="flex items-center gap-2 w-full">
+                    <button onClick={() => setBlueprintEnabled(!blueprintEnabled)} className={`shrink-0 px-2 h-10 rounded text-[9px] font-bold uppercase border transition-colors ${blueprintEnabled ? 'bg-amber-100 border-amber-400 text-amber-700' : 'bg-gray-100 border-gray-200 text-gray-400 hover:border-gray-300'}`} title="Pre-analyze jewelry for fidelity (slower, +1 API call/item)">
+                        BP
+                    </button>
+                    <Button className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-indigo-600 hover:bg-indigo-500 border-none shadow-sm" onClick={startProduction} isLoading={isProcessing}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        EXECUTE BATCH {String(runnableCount).padStart(3, '0')}
+                    </Button>
+                </div>
              </div>
         </div>
       </div>
@@ -586,7 +620,20 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
              </div>
              <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden min-h-0">
                 {activeImage ? (
-                    <img src={activeImage} className="w-full h-full object-contain shadow-2xl" />
+                    <div className="relative w-full h-full">
+                        <img src={activeImage} className="w-full h-full object-contain shadow-2xl" />
+                        {variantCount > 1 && (
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1.5">
+                                <button onClick={() => setVariantIndex(Math.max(0, variantIndex - 1))} disabled={variantIndex === 0} className="text-white/80 hover:text-white disabled:text-white/30 transition-colors">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                                </button>
+                                <span className="text-white text-xs font-mono font-bold">{variantIndex + 1}/{variantCount}</span>
+                                <button onClick={() => setVariantIndex(Math.min(variantCount - 1, variantIndex + 1))} disabled={variantIndex >= variantCount - 1} className="text-white/80 hover:text-white disabled:text-white/30 transition-colors">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 ) : selectedItem ? (
                     <div className="flex flex-col items-center justify-center opacity-60 p-4">
                          <div className="w-32 h-32 border border-gray-200 flex items-center justify-center mb-4 bg-white overflow-hidden rounded-lg shadow-sm">
@@ -615,7 +662,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             </Button>
                             <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
                                 const base64 = activeImage.includes('base64,') ? activeImage : `data:image/png;base64,${activeImage}`;
-                                downloadBase64Image(base64, `4K_studio_${selectedItem?.sku || 'import'}.png`);
+                                const suffix = variantCount > 1 ? `_v${variantIndex + 1}` : '';
+                                downloadBase64Image(base64, `4K_studio_${selectedItem?.sku || 'import'}${suffix}.png`);
                             }}>
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                 DOWNLOAD 4K

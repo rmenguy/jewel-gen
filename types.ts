@@ -50,6 +50,7 @@ export interface ProductionItem {
   category?: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'ERROR';
   resultImage?: string;
+  resultImages?: string[];
   error?: string;
   chainLength?: number;    // cm — user-entered
   pendantSize?: number;    // cm — user-entered (legacy, kept for compat)
