@@ -52,7 +52,9 @@ export interface ProductionItem {
   resultImage?: string;
   error?: string;
   chainLength?: number;    // cm — user-entered
-  pendantSize?: number;    // cm — user-entered
+  pendantSize?: number;    // cm — user-entered (legacy, kept for compat)
+  pendantHeight?: number;  // cm — pendant/charm height (L)
+  pendantWidth?: number;   // cm — pendant/charm width (l)
 }
 
 export type EngineType = 'CATALOG' | 'MANNEQUIN' | 'PRODUCTION' | 'BATCH';
@@ -134,7 +136,9 @@ export interface CustomPreset {
 // Jewelry Fidelity Engine types
 export interface ProductDimensions {
   chainLength?: number;    // cm
-  pendantSize?: number;    // cm
+  pendantSize?: number;    // cm (legacy)
+  pendantHeight?: number;  // cm — pendant/charm height (L)
+  pendantWidth?: number;   // cm — pendant/charm width (l)
 }
 
 export interface JewelryBlueprint {

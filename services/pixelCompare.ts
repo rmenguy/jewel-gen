@@ -339,6 +339,75 @@ export async function cropFromSegmentation(
 }
 
 /**
+ * Composite a jewelry packshot onto a dressed model image using 2-pass blending.
+ * Uses the segmented bounding box from the dressed image to position the packshot.
+ * Pass 1: source-over at full opacity (real pixels)
+ * Pass 2: multiply blend at 0.15 alpha (lighting integration)
+ * Returns the composited image as a data URI.
+ */
+export async function compositeJewelryOnModel(
+  dressedBase64: string,
+  productBase64: string,
+  dressedSegmentation: SegmentationResult,
+): Promise<string> {
+  const dressedSrc = dressedBase64.startsWith('data:') ? dressedBase64 : `data:image/png;base64,${dressedBase64}`;
+  const productSrc = productBase64.startsWith('data:') ? productBase64 : `data:image/png;base64,${productBase64}`;
+
+  const dressedImg = await loadImage(dressedSrc);
+  const productImg = await loadImage(productSrc);
+
+  const cw = dressedImg.naturalWidth;
+  const ch = dressedImg.naturalHeight;
+
+  // Bounding box of jewelry on the dressed image (normalized 0-1000)
+  const [y1n, x1n, y2n, x2n] = dressedSegmentation.box_2d;
+  const x1 = Math.round((x1n / 1000) * cw);
+  const y1 = Math.round((y1n / 1000) * ch);
+  const x2 = Math.round((x2n / 1000) * cw);
+  const y2 = Math.round((y2n / 1000) * ch);
+  const boxW = Math.max(x2 - x1, 1);
+  const boxH = Math.max(y2 - y1, 1);
+
+  // Draw dressed image as background
+  const [canvas, ctx] = createCanvas(cw, ch);
+  ctx.drawImage(dressedImg, 0, 0);
+
+  // Prepare packshot: remove white background before compositing
+  const [prodCanvas, prodCtx] = createCanvas(productImg.naturalWidth, productImg.naturalHeight);
+  prodCtx.drawImage(productImg, 0, 0);
+  const prodData = prodCtx.getImageData(0, 0, productImg.naturalWidth, productImg.naturalHeight);
+  const px = prodData.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    // Remove near-white pixels (background)
+    if (r > 220 && g > 220 && b > 220) {
+      px[i + 3] = 0;
+    }
+    // Feather light grays for smooth edges
+    else if (r > 200 && g > 200 && b > 200) {
+      const avg = (r + g + b) / 3;
+      px[i + 3] = Math.round(255 * (1 - (avg - 200) / 55));
+    }
+  }
+  prodCtx.putImageData(prodData, 0, 0);
+
+  // Pass 1: Opaque draw — real packshot pixels at the jewelry position
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(prodCanvas, 0, 0, productImg.naturalWidth, productImg.naturalHeight, x1, y1, boxW, boxH);
+
+  // Pass 2: Multiply blend for lighting integration with skin/scene
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 0.15;
+  ctx.drawImage(prodCanvas, 0, 0, productImg.naturalWidth, productImg.naturalHeight, x1, y1, boxW, boxH);
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1.0;
+
+  return canvas.toDataURL('image/png');
+}
+
+/**
  * Compare two jewelry crops and return fidelity scores.
  * Pass threshold: pHash distance <= 8 AND histogram correlation >= 0.75.
  */

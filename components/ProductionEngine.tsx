@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
 import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions, PoseKey } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry } from '../services/geminiService';
+import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting } from '../services/geminiService';
 import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
@@ -47,6 +47,14 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [extractedPrompt, setExtractedPrompt] = useState('');
   const [presetName, setPresetName] = useState('');
   const [fidelityStatus, setFidelityStatus] = useState<Record<string, string>>({});
+  const [importedBaseImage, setImportedBaseImage] = useState<string | null>(null);
+  const [refineMode, setRefineMode] = useState(false);
+  const [refineCategory, setRefineCategory] = useState('collier');
+  const [refineDims, setRefineDims] = useState<{ chainLength?: number; pendantHeight?: number; pendantWidth?: number }>({});
+  const [refineUndo, setRefineUndo] = useState<string | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
+  const refineFileRef = useRef<HTMLInputElement>(null);
+  const baseImportRef = useRef<HTMLInputElement>(null);
 
   const { customPresets, addCustomPreset, removeCustomPreset, setBareCache, getBareCache, clearBareCache } = useProductionStore();
 
@@ -228,8 +236,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
             // Build dimensions if provided
             const dimensions: ProductDimensions | undefined =
-                (item.chainLength || item.pendantSize)
-                    ? { chainLength: item.chainLength, pendantSize: item.pendantSize }
+                (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
+                    ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
                     : undefined;
 
             setFidelityStatus(prev => ({ ...prev, [item.id]: 'Generating (bare + dress)...' }));
@@ -262,8 +270,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
         }
     };
 
-    // Process in batches of 5
-    const batchSize = 5;
+    // Process in batches of 10
+    const batchSize = 10;
     for (let i = 0; i < pendingItems.length; i += batchSize) {
         const batch = pendingItems.slice(i, i + batchSize);
         await Promise.all(batch.map(processItem));
@@ -301,7 +309,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
       setQueue(prev => prev.map(p => p.id === id ? { ...p, category } : p));
   };
 
-  const updateItemDimensions = (id: string, dims: { chainLength?: number; pendantSize?: number }) => {
+  const updateItemDimensions = (id: string, dims: { chainLength?: number; pendantSize?: number; pendantHeight?: number; pendantWidth?: number }) => {
       setQueue(prev => prev.map(p => p.id === id ? { ...p, ...dims } : p));
   };
 
@@ -328,8 +336,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
           category: item.category || '',
           name: item.name,
           blueprint,
-          dimensions: (item.chainLength || item.pendantSize)
-            ? { chainLength: item.chainLength, pendantSize: item.pendantSize }
+          dimensions: (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
+            ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
             : undefined,
         };
       }));
@@ -359,6 +367,68 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
   const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
   const runnableCount = queue.filter(i => i.status === 'PENDING' || i.status === 'ERROR').length;
+
+  const activeImage = useMemo(() => {
+      if (importedBaseImage) return importedBaseImage;
+      if (selectedItem?.status === 'COMPLETED' && selectedItem?.resultImage) return selectedItem.resultImage;
+      return null;
+  }, [importedBaseImage, selectedItem]);
+
+  const handleBaseImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setImportedBaseImage(reader.result as string);
+              setSelectedItemId(null);
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const handleRefineApply = async (productSource: string) => {
+      if (!activeImage || isRefining) return;
+      setIsRefining(true);
+      try {
+          let productBase64 = productSource;
+          if (productSource.startsWith('http')) {
+              const resp = await fetch(productSource);
+              const blob = await resp.blob();
+              productBase64 = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result as string);
+                  reader.readAsDataURL(blob);
+              });
+          }
+
+          let blueprint: JewelryBlueprint | undefined;
+          try {
+              blueprint = await analyzeJewelryProduct(productBase64);
+          } catch {
+              console.warn('[REFINE] Blueprint analysis failed, proceeding without');
+          }
+
+          const dimensions: ProductDimensions | undefined =
+              (refineDims.chainLength || refineDims.pendantHeight || refineDims.pendantWidth)
+                  ? refineDims : undefined;
+
+          setRefineUndo(activeImage);
+
+          const result = await addJewelryToExisting(activeImage, productBase64, refineCategory, blueprint, dimensions);
+
+          if (importedBaseImage) {
+              setImportedBaseImage(result);
+          } else if (selectedItem) {
+              setQueue((prev: ProductionItem[]) => prev.map(q => q.id === selectedItem.id ? { ...q, resultImage: result } : q));
+          }
+          setRefineMode(false);
+      } catch (err: any) {
+          console.error('[REFINE] Error:', err);
+          alert(`Refinement failed: ${err.message || err}`);
+      } finally {
+          setIsRefining(false);
+      }
+  };
 
   return (
     <div className="w-full h-[calc(100vh-140px)] flex gap-4 animate-fadeIn">
@@ -435,16 +505,23 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                                 <input
                                                     type="number"
                                                     placeholder="Ch cm"
-                                                    className="w-1/2 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
+                                                    className="w-1/3 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
                                                     value={item.chainLength || ''}
                                                     onChange={(e) => updateItemDimensions(item.id, { chainLength: e.target.value ? Number(e.target.value) : undefined })}
                                                 />
                                                 <input
                                                     type="number"
-                                                    placeholder="Pd cm"
-                                                    className="w-1/2 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
-                                                    value={item.pendantSize || ''}
-                                                    onChange={(e) => updateItemDimensions(item.id, { pendantSize: e.target.value ? Number(e.target.value) : undefined })}
+                                                    placeholder="Pd H"
+                                                    className="w-1/3 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
+                                                    value={item.pendantHeight || ''}
+                                                    onChange={(e) => updateItemDimensions(item.id, { pendantHeight: e.target.value ? Number(e.target.value) : undefined })}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    placeholder="Pd L"
+                                                    className="w-1/3 bg-white/20 text-white text-[7px] px-1 py-0 rounded outline-none placeholder-white/50 text-center"
+                                                    value={item.pendantWidth || ''}
+                                                    onChange={(e) => updateItemDimensions(item.id, { pendantWidth: e.target.value ? Number(e.target.value) : undefined })}
                                                 />
                                             </div>
                                         )}
@@ -489,35 +566,102 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
       <div className="w-1/2 flex flex-col gap-4">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 flex flex-col relative overflow-hidden">
+             <input type="file" ref={baseImportRef} className="hidden" accept="image/*" onChange={handleBaseImport} />
+             <input type="file" ref={refineFileRef} className="hidden" accept="image/*" onChange={(e) => {
+                 const file = e.target.files?.[0];
+                 if (file) {
+                     const reader = new FileReader();
+                     reader.onloadend = () => handleRefineApply(reader.result as string);
+                     reader.readAsDataURL(file);
+                 }
+             }} />
              <div className="absolute top-4 left-4 z-10 flex gap-2">
                 <div className="bg-white/90 backdrop-blur border border-gray-200 px-2 py-1 rounded text-[10px] font-bold text-gray-900 flex items-center gap-2 shadow-sm">
                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> STUDIO <span className="text-indigo-600">4K PRO</span>
                 </div>
+                <button onClick={() => baseImportRef.current?.click()} className="bg-white/90 backdrop-blur border border-gray-200 px-2 py-1 rounded text-[10px] font-bold text-indigo-600 hover:text-indigo-500 hover:border-indigo-300 transition-colors shadow-sm">IMPORT</button>
+                {importedBaseImage && (
+                    <button onClick={() => { setImportedBaseImage(null); setRefineMode(false); setRefineUndo(null); }} className="bg-white/90 backdrop-blur border border-gray-200 px-2 py-1 rounded text-[10px] font-bold text-red-500 hover:text-red-400 transition-colors shadow-sm">CLEAR</button>
+                )}
              </div>
-             <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden">
-                {selectedItem ? (
-                    selectedItem.status === 'COMPLETED' && selectedItem.resultImage ? <img src={selectedItem.resultImage} className="w-full h-full object-contain shadow-2xl" /> : (
-                        <div className="flex flex-col items-center justify-center opacity-60 p-4">
-                             <div className="w-32 h-32 border border-gray-200 flex items-center justify-center mb-4 bg-white overflow-hidden rounded-lg shadow-sm">
-                                {selectedItem.imageUrl ? <img src={selectedItem.imageUrl.split('|')[0]} className="w-full h-full object-contain opacity-50 grayscale" /> : <span className="text-xs text-gray-400">NO PREVIEW</span>}
-                             </div>
-                             <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">{selectedItem.sku}</p>
-                             <p className="text-[10px] text-gray-400 mt-1 uppercase">{selectedItem.status}</p>
-                             {selectedItem.error && <p className="text-[9px] text-red-500 mt-2 px-6 text-center border border-red-200 bg-red-50 py-1 rounded font-mono">{selectedItem.error}</p>}
-                        </div>
-                    )
+             <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden min-h-0">
+                {activeImage ? (
+                    <img src={activeImage} className="w-full h-full object-contain shadow-2xl" />
+                ) : selectedItem ? (
+                    <div className="flex flex-col items-center justify-center opacity-60 p-4">
+                         <div className="w-32 h-32 border border-gray-200 flex items-center justify-center mb-4 bg-white overflow-hidden rounded-lg shadow-sm">
+                            {selectedItem.imageUrl ? <img src={selectedItem.imageUrl.split('|')[0]} className="w-full h-full object-contain opacity-50 grayscale" /> : <span className="text-xs text-gray-400">NO PREVIEW</span>}
+                         </div>
+                         <p className="text-xs font-mono text-gray-500 uppercase tracking-widest">{selectedItem.sku}</p>
+                         <p className="text-[10px] text-gray-400 mt-1 uppercase">{selectedItem.status}</p>
+                         {selectedItem.error && <p className="text-[9px] text-red-500 mt-2 px-6 text-center border border-red-200 bg-red-50 py-1 rounded font-mono">{selectedItem.error}</p>}
+                    </div>
                 ) : <p className="text-xs text-gray-400 uppercase tracking-widest">No Selection</p>}
              </div>
-             {selectedItem && selectedItem.status === 'COMPLETED' && selectedItem.resultImage && (
-                <div className="h-14 border-t border-gray-200 bg-white flex items-center justify-between px-4">
-                    <span className="text-[9px] font-mono text-gray-400">RES: 4096 x 5461 // UHD_4K</span>
-                    <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
-                            const base64 = selectedItem.resultImage!.includes('base64,') ? selectedItem.resultImage! : `data:image/png;base64,${selectedItem.resultImage!}`;
-                            downloadBase64Image(base64, `4K_studio_${selectedItem.sku}.png`);
-                        }}>
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        DOWNLOAD 4K
-                    </Button>
+             {activeImage && (
+                <div className="border-t border-gray-200 bg-white flex-shrink-0">
+                    <div className="h-14 flex items-center justify-between px-4">
+                        <span className="text-[9px] font-mono text-gray-400">RES: 4096 x 5461 // UHD_4K</span>
+                        <div className="flex items-center gap-2">
+                            {refineUndo && (
+                                <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
+                                    if (importedBaseImage) { setImportedBaseImage(refineUndo); }
+                                    else if (selectedItem) { setQueue((prev: ProductionItem[]) => prev.map(q => q.id === selectedItem.id ? { ...q, resultImage: refineUndo } : q)); }
+                                    setRefineUndo(null);
+                                }}>UNDO</Button>
+                            )}
+                            <Button variant="secondary" className="text-[10px] h-8" onClick={() => setRefineMode(!refineMode)} disabled={isRefining}>
+                                {refineMode ? 'CANCEL' : '+ ADD JEWELRY'}
+                            </Button>
+                            <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
+                                const base64 = activeImage.includes('base64,') ? activeImage : `data:image/png;base64,${activeImage}`;
+                                downloadBase64Image(base64, `4K_studio_${selectedItem?.sku || 'import'}.png`);
+                            }}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                DOWNLOAD 4K
+                            </Button>
+                        </div>
+                    </div>
+                    {refineMode && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 space-y-3">
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                    <label className="text-[9px] uppercase font-bold text-gray-400 mb-1 block">Jewelry Source</label>
+                                    <div className="flex gap-2">
+                                        <select className="flex-1 h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-2 outline-none" onChange={(e) => { const item = queue.find(q => q.id === e.target.value); if (item) handleRefineApply(item.imageUrl); }} defaultValue="">
+                                            <option value="" disabled>Select from queue...</option>
+                                            {queue.map(q => (<option key={q.id} value={q.id}>{q.sku} — {q.category || q.name}</option>))}
+                                        </select>
+                                        <button onClick={() => refineFileRef.current?.click()} className="h-8 px-3 bg-white border border-gray-200 rounded text-[10px] font-bold text-indigo-600 hover:border-indigo-300 transition-colors">UPLOAD</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-end gap-3">
+                                <div>
+                                    <label className="text-[9px] uppercase font-bold text-gray-400 mb-1 block">Category</label>
+                                    <select className="h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-2 outline-none" value={refineCategory} onChange={(e) => setRefineCategory(e.target.value)}>
+                                        <option value="collier">Collier</option>
+                                        <option value="sautoir">Sautoir</option>
+                                        <option value="sautoir-long">Sautoir Long</option>
+                                        <option value="boucles">Boucles</option>
+                                        <option value="bague">Bague</option>
+                                        <option value="bracelet">Bracelet</option>
+                                    </select>
+                                </div>
+                                <div className="flex gap-1">
+                                    <div><label className="text-[8px] uppercase text-gray-400 mb-1 block">Ch cm</label><input type="number" className="w-14 h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-1 text-center outline-none" placeholder="—" onChange={(e) => setRefineDims(d => ({ ...d, chainLength: e.target.value ? Number(e.target.value) : undefined }))} /></div>
+                                    <div><label className="text-[8px] uppercase text-gray-400 mb-1 block">Pd H</label><input type="number" className="w-14 h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-1 text-center outline-none" placeholder="—" onChange={(e) => setRefineDims(d => ({ ...d, pendantHeight: e.target.value ? Number(e.target.value) : undefined }))} /></div>
+                                    <div><label className="text-[8px] uppercase text-gray-400 mb-1 block">Pd L</label><input type="number" className="w-14 h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-1 text-center outline-none" placeholder="—" onChange={(e) => setRefineDims(d => ({ ...d, pendantWidth: e.target.value ? Number(e.target.value) : undefined }))} /></div>
+                                </div>
+                            </div>
+                            {isRefining && (
+                                <div className="flex items-center gap-2 text-[10px] text-indigo-600 font-mono">
+                                    <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    Adding jewelry (dress + composite + validation)...
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
              )}
         </div>
