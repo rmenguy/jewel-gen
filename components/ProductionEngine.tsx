@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
 import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions, PoseKey } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting } from '../services/geminiService';
+import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting, freeformEditImage } from '../services/geminiService';
 import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
@@ -54,6 +54,9 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [refineDims, setRefineDims] = useState<{ chainLength?: number; pendantHeight?: number; pendantWidth?: number }>({});
   const [refineUndo, setRefineUndo] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [variantIndex, setVariantIndex] = useState(0);
   const refineFileRef = useRef<HTMLInputElement>(null);
   const baseImportRef = useRef<HTMLInputElement>(null);
@@ -332,12 +335,14 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     setIsStacking(true);
     const bareCache = { get: getBareCache, set: setBareCache };
     try {
-      // Pre-analyze each product for fidelity
+      // Pre-analyze each product for fidelity (only if blueprint enabled)
       const products = await Promise.all(selectedItems.map(async (item) => {
         let blueprint: JewelryBlueprint | undefined;
-        try {
-          blueprint = await analyzeJewelryProduct(item.imageUrl);
-        } catch { /* proceed without */ }
+        if (blueprintEnabled) {
+          try {
+            blueprint = await analyzeJewelryProduct(item.imageUrl);
+          } catch { /* proceed without */ }
+        }
         return {
           imageUrl: item.imageUrl,
           category: item.category || '',
@@ -400,6 +405,27 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
               setSelectedItemId(null);
           };
           reader.readAsDataURL(file);
+      }
+  };
+
+  const handleFreeformEdit = async () => {
+      if (!activeImage || !editPrompt.trim() || isEditing) return;
+      setIsEditing(true);
+      try {
+          setRefineUndo(activeImage);
+          const result = await freeformEditImage(activeImage, editPrompt.trim());
+          if (importedBaseImage) {
+              setImportedBaseImage(result);
+          } else if (selectedItem) {
+              setQueue((prev: ProductionItem[]) => prev.map(q => q.id === selectedItem.id ? { ...q, resultImage: result } : q));
+          }
+          setEditPrompt('');
+          setEditMode(false);
+      } catch (err: any) {
+          console.error('[EDIT] Error:', err);
+          alert(`Edit failed: ${err.message || err}`);
+      } finally {
+          setIsEditing(false);
       }
   };
 
@@ -657,7 +683,10 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                     setRefineUndo(null);
                                 }}>UNDO</Button>
                             )}
-                            <Button variant="secondary" className="text-[10px] h-8" onClick={() => setRefineMode(!refineMode)} disabled={isRefining}>
+                            <Button variant="secondary" className="text-[10px] h-8" onClick={() => { setEditMode(!editMode); if (refineMode) setRefineMode(false); }} disabled={isEditing}>
+                                {editMode ? 'CANCEL' : 'EDIT'}
+                            </Button>
+                            <Button variant="secondary" className="text-[10px] h-8" onClick={() => { setRefineMode(!refineMode); if (editMode) setEditMode(false); }} disabled={isRefining}>
                                 {refineMode ? 'CANCEL' : '+ ADD JEWELRY'}
                             </Button>
                             <Button variant="secondary" className="text-[10px] h-8" onClick={() => {
@@ -670,6 +699,35 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             </Button>
                         </div>
                     </div>
+                    {editMode && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                            <label className="text-[9px] uppercase font-bold text-gray-400 mb-1 block">Edit Prompt</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    className="flex-1 h-8 bg-white border border-gray-200 rounded text-[10px] font-mono px-3 outline-none focus:border-indigo-300"
+                                    placeholder="e.g. Remove the necklace, Move the pendant lower, Add earrings..."
+                                    value={editPrompt}
+                                    onChange={(e) => setEditPrompt(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') handleFreeformEdit(); }}
+                                    disabled={isEditing}
+                                />
+                                <button
+                                    onClick={handleFreeformEdit}
+                                    disabled={isEditing || !editPrompt.trim()}
+                                    className="h-8 px-4 bg-indigo-600 text-white rounded text-[10px] font-bold hover:bg-indigo-500 disabled:opacity-40 transition-colors"
+                                >
+                                    {isEditing ? 'EDITING...' : 'APPLY'}
+                                </button>
+                            </div>
+                            {isEditing && (
+                                <div className="flex items-center gap-2 text-[10px] text-indigo-600 font-mono mt-2">
+                                    <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    Applying edit...
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {refineMode && (
                         <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 space-y-3">
                             <div className="flex items-center gap-3">

@@ -8,6 +8,7 @@ interface ProductionStore {
   addToQueue: (items: ProductionItem[]) => void;
   setQueue: (queue: ProductionItem[] | ((prev: ProductionItem[]) => ProductionItem[])) => void;
   updateItem: (id: string, updates: Partial<ProductionItem>) => void;
+  removeFromQueue: (id: string) => void;
   clearQueue: () => void;
   setMannequinImage: (img: string | null) => void;
 
@@ -46,6 +47,9 @@ export const useProductionStore = create<ProductionStore>((set, get) => ({
         item.id === id ? { ...item, ...updates } : item
       ),
     })),
+
+  removeFromQueue: (id) =>
+    set((state) => ({ queue: state.queue.filter((item) => item.id !== id) })),
 
   clearQueue: () => set({ queue: [] }),
 

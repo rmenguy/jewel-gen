@@ -372,37 +372,89 @@ export async function compositeJewelryOnModel(
   const [canvas, ctx] = createCanvas(cw, ch);
   ctx.drawImage(dressedImg, 0, 0);
 
-  // Prepare packshot: remove white background before compositing
+  // --- Step 1: Erase AI jewelry from the bounding box area ---
+  // Sample border pixels around the box to get surrounding skin/background color
+  const sampleRadius = 8;
+  const imgData = ctx.getImageData(0, 0, cw, ch);
+  const d = imgData.data;
+
+  // Collect average color from pixels just outside the bounding box edges
+  let sumR = 0, sumG = 0, sumB = 0, count = 0;
+  for (let sx = Math.max(0, x1 - sampleRadius); sx < Math.min(cw, x2 + sampleRadius); sx++) {
+    for (const sy of [Math.max(0, y1 - sampleRadius), Math.min(ch - 1, y2 + sampleRadius)]) {
+      const idx = (sy * cw + sx) * 4;
+      sumR += d[idx]; sumG += d[idx + 1]; sumB += d[idx + 2]; count++;
+    }
+  }
+  for (let sy = Math.max(0, y1); sy < Math.min(ch, y2); sy++) {
+    for (const sx of [Math.max(0, x1 - sampleRadius), Math.min(cw - 1, x2 + sampleRadius)]) {
+      const idx = (sy * cw + sx) * 4;
+      sumR += d[idx]; sumG += d[idx + 1]; sumB += d[idx + 2]; count++;
+    }
+  }
+  const avgR = count > 0 ? Math.round(sumR / count) : 200;
+  const avgG = count > 0 ? Math.round(sumG / count) : 180;
+  const avgB = count > 0 ? Math.round(sumB / count) : 170;
+
+  // Fill jewelry area with sampled skin/bg color (erases AI jewelry)
+  ctx.fillStyle = `rgb(${avgR},${avgG},${avgB})`;
+  ctx.fillRect(x1, y1, boxW, boxH);
+
+  // Soften the erased area edges by re-drawing the background with a slight blur effect
+  // Draw surrounding context back over with feathered edges
+  ctx.globalAlpha = 0.6;
+  ctx.drawImage(dressedImg,
+    Math.max(0, x1 - boxW * 0.3), Math.max(0, y1 - boxH * 0.3),
+    boxW * 1.6, boxH * 1.6,
+    Math.max(0, x1 - boxW * 0.3), Math.max(0, y1 - boxH * 0.3),
+    boxW * 1.6, boxH * 1.6
+  );
+  ctx.globalAlpha = 1.0;
+
+  // --- Step 2: Prepare packshot with saturation-based background removal ---
   const [prodCanvas, prodCtx] = createCanvas(productImg.naturalWidth, productImg.naturalHeight);
   prodCtx.drawImage(productImg, 0, 0);
   const prodData = prodCtx.getImageData(0, 0, productImg.naturalWidth, productImg.naturalHeight);
   const px = prodData.data;
   for (let i = 0; i < px.length; i += 4) {
     const r = px[i], g = px[i + 1], b = px[i + 2];
-    // Remove near-white pixels (background)
-    if (r > 220 && g > 220 && b > 220) {
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    const lightness = (maxC + minC) / 2;
+    const saturation = maxC === 0 ? 0 : (maxC - minC) / maxC;
+
+    if (lightness > 230 && saturation < 0.08) {
       px[i + 3] = 0;
-    }
-    // Feather light grays for smooth edges
-    else if (r > 200 && g > 200 && b > 200) {
-      const avg = (r + g + b) / 3;
-      px[i + 3] = Math.round(255 * (1 - (avg - 200) / 55));
+    } else if (lightness > 200 && saturation < 0.12) {
+      const fade = (lightness - 200) / 30;
+      px[i + 3] = Math.round(255 * (1 - fade * (1 - saturation / 0.12)));
     }
   }
   prodCtx.putImageData(prodData, 0, 0);
 
-  // Pass 1: Opaque draw — real packshot pixels at the jewelry position
+  // --- Step 3: Paste real packshot preserving aspect ratio ---
+  const padding = 0.08;
+  const innerW = boxW * (1 - padding * 2);
+  const innerH = boxH * (1 - padding * 2);
+  const prodAspect = productImg.naturalWidth / productImg.naturalHeight;
+  const boxAspect = innerW / innerH;
+
+  let drawW: number, drawH: number;
+  if (prodAspect > boxAspect) {
+    drawW = innerW;
+    drawH = innerW / prodAspect;
+  } else {
+    drawH = innerH;
+    drawW = innerH * prodAspect;
+  }
+
+  const drawX = x1 + (boxW - drawW) / 2;
+  const drawY = y1 + (boxH - drawH) / 2;
+
+  // Single pass: full opacity since AI jewelry is erased
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1.0;
-  ctx.drawImage(prodCanvas, 0, 0, productImg.naturalWidth, productImg.naturalHeight, x1, y1, boxW, boxH);
-
-  // Pass 2: Multiply blend for lighting integration with skin/scene
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = 0.15;
-  ctx.drawImage(prodCanvas, 0, 0, productImg.naturalWidth, productImg.naturalHeight, x1, y1, boxW, boxH);
-
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1.0;
+  ctx.drawImage(prodCanvas, 0, 0, productImg.naturalWidth, productImg.naturalHeight, drawX, drawY, drawW, drawH);
 
   return canvas.toDataURL('image/png');
 }
