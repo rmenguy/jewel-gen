@@ -6,6 +6,7 @@ import { CatalogEngine } from './components/CatalogEngine';
 import { MannequinEngine } from './components/MannequinEngine';
 import { ProductionEngine } from './components/ProductionEngine';
 import { BatchEngine } from './components/BatchEngine';
+import BannerEngine from './components/BannerEngine';
 import { EngineType, Product } from './types';
 
 const App: React.FC = () => {
@@ -96,7 +97,7 @@ const App: React.FC = () => {
             </div>
 
             <nav className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                {(['CATALOG', 'MANNEQUIN', 'PRODUCTION', 'BATCH'] as EngineType[]).map((engine) => (
+                {(['CATALOG', 'MANNEQUIN', 'PRODUCTION', 'BATCH', 'BANNER'] as EngineType[]).map((engine) => (
                     <button
                         key={engine}
                         onClick={() => setActiveEngine(engine)}
@@ -121,6 +122,7 @@ const App: React.FC = () => {
                     <option value="MANNEQUIN">MANNEQUIN</option>
                     <option value="PRODUCTION">PRODUCTION</option>
                     <option value="BATCH">BATCH</option>
+                    <option value="BANNER">BANNER</option>
                  </select>
             </div>
         </div>
@@ -147,6 +149,10 @@ const App: React.FC = () => {
 
         <div className={activeEngine === 'BATCH' ? 'block h-full' : 'hidden h-full'}>
             <BatchEngine mannequinImage={mannequinImage} />
+        </div>
+
+        <div className={activeEngine === 'BANNER' ? 'block' : 'hidden'}>
+            <BannerEngine />
         </div>
       </main>
 
