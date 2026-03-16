@@ -1882,6 +1882,11 @@ export const applyBatchRefinements = async (
 
 // ─── Banner Engine ───────────────────────────────────────────
 
+/**
+ * Generate a 16:9 banner mannequin from identity reference photos.
+ * Uses the same BIOMETRIC RECONSTRUCTION + editorial photography prompts
+ * as generateProductionPhoto() and generateMannequin().
+ */
 export async function generateBannerMannequin(
   identityPhotos: string[],
   poseReference: string | null,
@@ -1896,48 +1901,68 @@ export async function generateBannerMannequin(
 
   const parts: any[] = [];
 
+  // Identity photos first
   for (const photo of identityPhotos) {
     const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
+  // Pose reference (if any)
   if (poseReference) {
     const raw = poseReference.includes('base64,') ? poseReference.split(',')[1] : poseReference;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
+  // Background image (if any)
   if (backgroundImage) {
     const raw = backgroundImage.includes('base64,') ? backgroundImage.split(',')[1] : backgroundImage;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
-  let prompt = `Generate a HIGH-QUALITY professional banner photograph in LANDSCAPE 16:9 format.
+  // Build image reference descriptions for the prompt
+  let imageDesc = `The first ${identityPhotos.length} image(s) are IDENTITY REFERENCE photos of the subject.`;
+  let nextImgIdx = identityPhotos.length + 1;
+  if (poseReference) {
+    imageDesc += ` Image ${nextImgIdx} is the POSE/FRAMING REFERENCE — match this exact composition.`;
+    nextImgIdx++;
+  }
+  if (backgroundImage) {
+    imageDesc += ` Image ${nextImgIdx} is the BACKGROUND/ENVIRONMENT REFERENCE — use this setting.`;
+  }
 
-CRITICAL — IDENTITY PRESERVATION:
-The model in the photo MUST look IDENTICAL to the person in the ${identityPhotos.length} reference photo(s) provided. Same face, same skin tone, same features. This is a real person — preserve their exact appearance.
+  let prompt = `EDITORIAL FASHION BANNER shot on medium format film camera. LANDSCAPE 16:9 FORMAT. RAW UNPROCESSED LOOK.
 
-OUTFIT: ${outfitPrompt || 'Elegant, fashionable clothing appropriate for a luxury jewelry brand banner.'}
+${imageDesc}
 
-ATMOSPHERE & LIGHTING: ${ambiancePrompt || 'Professional studio lighting, warm and luxurious.'}
+TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION:
+You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the identity reference photo(s). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo(s).
+
+CLOTHING: ${outfitPrompt || 'Simple elegant top, neutral or dark tones, luxury fashion aesthetic.'}
+
 `;
 
   if (poseReference) {
-    prompt += `\nPOSE & FRAMING: Match the EXACT pose, body position, and camera framing of the pose reference image provided. Reproduce the composition precisely.\n`;
+    prompt += `POSE & FRAMING: Reproduce the EXACT pose, body position, camera angle, and framing composition from the pose reference image. Match the crop, the body orientation, the hand positions, and the head angle precisely. The model should be in the same position as in the reference.\n\n`;
   } else if (posePrompt) {
-    prompt += `\nPOSE & FRAMING: ${posePrompt}\n`;
+    prompt += `POSE & FRAMING: ${posePrompt}\n\n`;
   } else {
-    prompt += `\nPOSE & FRAMING: Tight bust crop, confident direct gaze at camera, hands visible near décolleté area. Professional fashion editorial composition.\n`;
+    prompt += `POSE & FRAMING: Tight bust crop, confident direct gaze at camera, hands visible near décolleté area. Professional fashion editorial composition. Head-and-shoulders to mid-torso framing.\n\n`;
   }
 
   if (backgroundImage) {
-    prompt += `\nBACKGROUND: Use the background/environment from the background reference image provided. Integrate the model naturally into this setting.\n`;
+    prompt += `BACKGROUND: Use the background/environment from the background reference image. Integrate the model naturally into this setting with matching lighting and color temperature.\n\n`;
   }
 
-  prompt += `
-CRITICAL — NO JEWELRY:
-Do NOT add any jewelry, accessories, or adornments. The model's ears, neck, décolleté, wrists, and fingers must be COMPLETELY BARE and clean. These areas will receive jewelry in a later step.
+  prompt += `ATMOSPHERE & LIGHTING: ${ambiancePrompt || 'Warm sophisticated lighting, golden hour quality, rich and luxurious atmosphere.'}
 
-OUTPUT: Wide landscape 16:9 banner format. Highest possible resolution and photographic quality.`;
+SKIN (CRITICAL): Photorealistic skin with natural texture — visible pores and subtle skin grain, healthy even complexion. NO blemishes, NO red patches. The skin must look like a real healthy person in a professional fashion editorial: real texture but clear, healthy and flattering. Think Vogue/Elle editorial photography standards.
+
+TECHNICAL: Shot on Hasselblad H6D. Lens 80mm f/2.8. CRITICAL TEXTURE: Film grain CLEARLY visible on skin and across the image. Skin pores, peach fuzz, and natural micro-texture must be photographic and tactile — NOT smooth, NOT digitally retouched, NOT AI-generated. The image must look like a scanned medium format negative: organic, grainy, human. Color grading: warm analog tones.
+
+CRITICAL — NO JEWELRY:
+Do NOT add any jewelry, accessories, or adornments whatsoever. The model's ears, neck, décolleté, wrists, and fingers must be COMPLETELY BARE and clean. No earrings, no necklaces, no rings, no bracelets, no watches. These areas will receive jewelry in a later step — they must be pristine.
+
+OUTPUT FORMAT: WIDE LANDSCAPE 16:9 banner format. This is a website hero banner — the width must be significantly greater than the height. 4K resolution, highest possible photographic quality.`;
 
   parts.push({ text: prompt });
 
@@ -2030,6 +2055,11 @@ Return ONLY a valid JSON array. No explanation, no markdown fences.`;
   });
 }
 
+/**
+ * Generate the final banner with all jewelry pieces placed on the mannequin.
+ * Uses the same placement logic, biometric reconstruction, and stacking rules
+ * as generateProductionPhoto() and generateStackedProductionPhoto().
+ */
 export async function generateBannerWithJewelry(
   mannequinImage: string,
   assignments: Array<{
@@ -2043,33 +2073,64 @@ export async function generateBannerWithJewelry(
 
   const parts: any[] = [];
 
+  // Image 1: mannequin base
   const mannequinRaw = mannequinImage.includes('base64,') ? mannequinImage.split(',')[1] : mannequinImage;
   parts.push({ inlineData: { mimeType: 'image/png', data: mannequinRaw } });
 
+  // Images 2+: each jewelry piece
   for (const { jewelry } of assignments) {
     const raw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
-  const placementInstructions = assignments.map(({ jewelry, point }, i) =>
-    `${i + 1}. "${jewelry.name}" (image ${i + 2}) → Place at "${point.label}" (${point.zone} zone, position: ${point.x}% from left, ${point.y}% from top)`
-  ).join('\n');
+  // Build zone-specific placement instructions using the same logic as production engine
+  const ZONE_PLACEMENT: Record<string, string> = {
+    'ear': 'Earring attached to the earlobe or ear cartilage, clearly visible. Hair pulled back or tucked behind the ear if needed to expose the jewelry.',
+    'neck': 'Necklace/choker worn close to the neck, sitting on or just below the collarbone area. Short length, hugging the neckline.',
+    'chest': 'Necklace/sautoir hanging freely below the collarbone, pendant falling naturally with gravity. Chain drapes with natural arc, NOT flat against skin.',
+    'finger': 'Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible, ring catching light.',
+    'wrist': 'Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose.',
+    'ankle': 'Anklet worn around the ankle, naturally positioned. Ankle clearly visible.',
+  };
 
-  const prompt = `You are a professional jewelry photographer. Add jewelry to this banner photo.
+  const placementInstructions = assignments.map(({ jewelry, point }, i) => {
+    const zoneDesc = ZONE_PLACEMENT[point.zone] || '';
+    return `${i + 1}. "${jewelry.name}" (image ${i + 2}): ${zoneDesc} Place at "${point.label}" — coordinates: ${point.x}% from left, ${point.y}% from top of the image.`;
+  }).join('\n');
 
-FIRST IMAGE: The model/mannequin — this is the base photo. Preserve EVERYTHING about this image (face, pose, outfit, lighting, background) EXACTLY as-is.
+  // Count earrings for stacking instructions
+  const earringCount = assignments.filter(a => a.point.zone === 'ear').length;
+  // Count necklaces for layering instructions
+  const neckChestCount = assignments.filter(a => a.point.zone === 'neck' || a.point.zone === 'chest').length;
 
-JEWELRY TO ADD (images ${2} through ${assignments.length + 1}):
+  let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY PLACEMENT on a banner photo.
+
+IMAGE 1 (first image): The model/mannequin — this is the base photo.
+
+TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION:
+You are a high-end Digital Double specialist. The model in the output MUST be 100% IDENTICAL to the model in image 1. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Same pose, same outfit, same background, same lighting.
+
+JEWELRY TO ADD (images 2 through ${assignments.length + 1}):
 ${placementInstructions}
 
-CRITICAL RULES:
-- Each jewelry piece must match its reference image EXACTLY — same design, same materials, same proportions
-- Place each piece at the PRECISE location described
-- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, and integration with skin/clothing
-- Multiple necklaces/chains must layer naturally with proper drape and spacing
-- Do NOT modify the model's face, pose, outfit, background, or lighting
-- Maintain the 16:9 landscape banner format
-- Highest possible resolution and photographic quality`;
+`;
+
+  if (earringCount >= 2) {
+    prompt += `EARRING STACKING: ${earringCount} earrings must be placed on the ear(s) at DIFFERENT piercing positions as specified (lobe, upper lobe, helix, tragus). Each earring is a separate piece — do NOT merge them. Show them stacked along the ear, each clearly distinct and separately visible.\n\n`;
+  }
+
+  if (neckChestCount >= 2) {
+    prompt += `NECKLACE LAYERING: ${neckChestCount} necklaces/chains must layer naturally with visible GAPS between them. Shorter pieces sit higher, longer pieces hang lower. Each piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together. Each chain drapes freely with natural gravity. No overlap or tangle.\n\n`;
+  }
+
+  prompt += `CRITICAL FIDELITY RULES:
+- Each jewelry piece in the output MUST match its reference image EXACTLY — same chain type, same stone shapes, same materials, same proportions. Do NOT approximate or substitute any element.
+- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, light interaction with metal/stones, and natural integration with skin/clothing.
+- Each piece hangs at its own LENGTH with natural gravity — chains drape freely, pendants swing with weight, nothing fused to skin or other pieces.
+
+SCENE PRESERVATION: Do NOT modify the model's face, pose, outfit, background, or lighting. The ONLY change is adding the jewelry pieces at their specified locations.
+
+QUALITY: 8K hyper-realistic rendering, ultra-detailed. Maintain the 16:9 landscape banner format. Shot on Hasselblad, Kodak Portra film grain, organic and photographic.`;
 
   parts.push({ text: prompt });
 
