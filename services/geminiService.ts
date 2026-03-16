@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, PlacementPoint, BannerJewelry } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -1986,89 +1986,18 @@ OUTPUT FORMAT: WIDE LANDSCAPE 16:9 banner format. This is a website hero banner 
   });
 }
 
-export async function detectPlacementPoints(
-  mannequinImage: string,
-): Promise<PlacementPoint[]> {
-  const raw = mannequinImage.includes('base64,') ? mannequinImage.split(',')[1] : mannequinImage;
-
-  const prompt = `Analyze this image of a model/mannequin. Identify ALL body areas visible in the image where jewelry could be placed.
-
-For each area, return a JSON object with:
-- "id": sequential number starting at 1
-- "label": descriptive label in French (e.g., "Oreille gauche lobe", "Cou ras-de-cou", "Index main droite")
-- "zone": one of "ear", "neck", "chest", "finger", "wrist", "ankle"
-- "x": horizontal position as percentage from LEFT edge (0 = far left, 100 = far right)
-- "y": vertical position as percentage from TOP edge (0 = top, 100 = bottom)
-
-IMPORTANT:
-- Only include areas that are CLEARLY VISIBLE in the image
-- Use "neck" for choker/ras-de-cou level, "chest" for collier/sautoir level
-- For ears, distinguish lobe vs helix positions
-- For fingers, specify which finger and which hand
-- Coordinates must be precise — place the point at the EXACT center of where the jewelry would sit
-
-Return ONLY a valid JSON array. No explanation, no markdown fences.`;
-
-  const requestBody = {
-    contents: [{
-      parts: [
-        { inlineData: { mimeType: 'image/png', data: raw } },
-        { text: prompt },
-      ],
-    }],
-    generationConfig: {
-      responseModalities: ['TEXT'],
-      responseMimeType: 'application/json',
-    },
-  };
-
-  return withRetry(async () => {
-    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
-
-    const textPart = response.candidates?.[0]?.content?.parts?.find(
-      (p: any) => p.text
-    );
-    if (!textPart?.text) {
-      console.warn('[BANNER] No text in detectPlacementPoints response');
-      return [];
-    }
-
-    let jsonStr = textPart.text.trim();
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    }
-
-    let points: PlacementPoint[];
-    try {
-      points = JSON.parse(jsonStr);
-    } catch (e) {
-      console.warn('[BANNER] Failed to parse placement points JSON:', jsonStr.substring(0, 200));
-      return [];
-    }
-
-    if (!Array.isArray(points)) return [];
-
-    return points
-      .filter((p) => p.id && p.label && p.zone && typeof p.x === 'number' && typeof p.y === 'number')
-      .filter((p) => p.x >= 0 && p.x <= 100 && p.y >= 0 && p.y <= 100)
-      .map((p) => ({ ...p, assignedJewelryId: null }));
-  });
-}
-
 /**
- * Generate the final banner with all jewelry pieces placed on the mannequin.
- * Uses the same placement logic, biometric reconstruction, and stacking rules
- * as generateProductionPhoto() and generateStackedProductionPhoto().
+ * Generate the final banner with jewelry placed on the mannequin.
+ * Uses a freeform placement prompt where the user describes where each named piece goes.
+ * Each jewelry image is sent alongside the mannequin image.
  */
 export async function generateBannerWithJewelry(
   mannequinImage: string,
-  assignments: Array<{
-    jewelry: BannerJewelry;
-    point: PlacementPoint;
-  }>,
+  jewelryItems: BannerJewelry[],
+  placementPrompt: string,
 ): Promise<string> {
-  if (assignments.length === 0) {
-    throw new Error('At least one jewelry assignment is required');
+  if (jewelryItems.length === 0) {
+    throw new Error('At least one jewelry item is required');
   }
 
   const parts: any[] = [];
@@ -2078,59 +2007,42 @@ export async function generateBannerWithJewelry(
   parts.push({ inlineData: { mimeType: 'image/png', data: mannequinRaw } });
 
   // Images 2+: each jewelry piece
-  for (const { jewelry } of assignments) {
+  for (const jewelry of jewelryItems) {
     const raw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
-  // Build zone-specific placement instructions using the same logic as production engine
-  const ZONE_PLACEMENT: Record<string, string> = {
-    'ear': 'Earring attached to the earlobe or ear cartilage, clearly visible. Hair pulled back or tucked behind the ear if needed to expose the jewelry.',
-    'neck': 'Necklace/choker worn close to the neck, sitting on or just below the collarbone area. Short length, hugging the neckline.',
-    'chest': 'Necklace/sautoir hanging freely below the collarbone, pendant falling naturally with gravity. Chain drapes with natural arc, NOT flat against skin.',
-    'finger': 'Ring worn on the finger, naturally positioned on the hand. Fingers relaxed and visible, ring catching light.',
-    'wrist': 'Bracelet worn on the wrist, naturally positioned. Wrist and forearm visible, relaxed hand pose.',
-    'ankle': 'Anklet worn around the ankle, naturally positioned. Ankle clearly visible.',
-  };
+  // Build image index for the prompt
+  const imageIndex = jewelryItems.map((j, i) =>
+    `- Image ${i + 2}: "${j.name}"`
+  ).join('\n');
 
-  const placementInstructions = assignments.map(({ jewelry, point }, i) => {
-    const zoneDesc = ZONE_PLACEMENT[point.zone] || '';
-    return `${i + 1}. "${jewelry.name}" (image ${i + 2}): ${zoneDesc} Place at "${point.label}" — coordinates: ${point.x}% from left, ${point.y}% from top of the image.`;
-  }).join('\n');
+  const prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING on a banner photo.
 
-  // Count earrings for stacking instructions
-  const earringCount = assignments.filter(a => a.point.zone === 'ear').length;
-  // Count necklaces for layering instructions
-  const neckChestCount = assignments.filter(a => a.point.zone === 'neck' || a.point.zone === 'chest').length;
-
-  let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY PLACEMENT on a banner photo.
-
-IMAGE 1 (first image): The model/mannequin — this is the base photo.
+IMAGE REFERENCES:
+- Image 1: The model/mannequin — this is the base photo. Preserve this person's identity EXACTLY.
+${imageIndex}
 
 TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION:
-You are a high-end Digital Double specialist. The model in the output MUST be 100% IDENTICAL to the model in image 1. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Same pose, same outfit, same background, same lighting.
+You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in image 1. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in image 1. Same pose, same outfit, same background, same lighting.
 
-JEWELRY TO ADD (images 2 through ${assignments.length + 1}):
-${placementInstructions}
+JEWELRY PLACEMENT INSTRUCTIONS:
+${placementPrompt}
 
-`;
-
-  if (earringCount >= 2) {
-    prompt += `EARRING STACKING: ${earringCount} earrings must be placed on the ear(s) at DIFFERENT piercing positions as specified (lobe, upper lobe, helix, tragus). Each earring is a separate piece — do NOT merge them. Show them stacked along the ear, each clearly distinct and separately visible.\n\n`;
-  }
-
-  if (neckChestCount >= 2) {
-    prompt += `NECKLACE LAYERING: ${neckChestCount} necklaces/chains must layer naturally with visible GAPS between them. Shorter pieces sit higher, longer pieces hang lower. Each piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together. Each chain drapes freely with natural gravity. No overlap or tangle.\n\n`;
-  }
-
-  prompt += `CRITICAL FIDELITY RULES:
-- Each jewelry piece in the output MUST match its reference image EXACTLY — same chain type, same stone shapes, same materials, same proportions. Do NOT approximate or substitute any element.
-- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, light interaction with metal/stones, and natural integration with skin/clothing.
+CRITICAL STACKING RULES:
+- Each jewelry piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together.
 - Each piece hangs at its own LENGTH with natural gravity — chains drape freely, pendants swing with weight, nothing fused to skin or other pieces.
+- Visible GAPS between layered necklaces — shorter pieces higher, longer pieces lower. No overlap or tangle.
+- If multiple earrings: place each at a DIFFERENT position on the SAME ear (lobe, upper lobe, helix, tragus). Each earring clearly distinct.
+- Each piece must be clearly identifiable as a separate item matching its reference image.
 
-SCENE PRESERVATION: Do NOT modify the model's face, pose, outfit, background, or lighting. The ONLY change is adding the jewelry pieces at their specified locations.
+CRITICAL FIDELITY:
+- Each jewelry piece MUST match its reference image EXACTLY — same chain type, same stone shapes, same materials, same proportions. Do NOT approximate or substitute any element.
+- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, light interaction with metal/stones.
 
-QUALITY: 8K hyper-realistic rendering, ultra-detailed. Maintain the 16:9 landscape banner format. Shot on Hasselblad, Kodak Portra film grain, organic and photographic.`;
+SCENE PRESERVATION: Do NOT modify the model's face, pose, outfit, background, or lighting. The ONLY change is adding the jewelry.
+
+QUALITY: 8K hyper-realistic rendering, ultra-detailed. Maintain the 16:9 landscape banner format.`;
 
   parts.push({ text: prompt });
 

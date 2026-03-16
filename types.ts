@@ -190,18 +190,8 @@ export interface SupabaseProduct {
 
 // ─── Banner Engine ───────────────────────────────────────────
 
-export interface PlacementPoint {
-  id: number;
-  label: string;
-  zone: 'ear' | 'neck' | 'chest' | 'finger' | 'wrist' | 'ankle';
-  x: number;  // 0-100 (% from left)
-  y: number;  // 0-100 (% from top)
-  assignedJewelryId: string | null;
-}
-
 export interface BannerJewelry {
   id: string;
   name: string;
   imageBase64: string;
-  assignedPointId: number | null;
 }

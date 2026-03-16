@@ -1,30 +1,42 @@
 import { create } from 'zustand';
-import { PlacementPoint, BannerJewelry } from '../types';
+import { BannerJewelry } from '../types';
 
 const MAX_HISTORY = 10;
 
 interface BannerStore {
-  currentStep: 1 | 2 | 3 | 4;
+  // Step: 1 = mannequin, 2 = jewelry placement, 3 = refinement
+  currentStep: 1 | 2 | 3;
+
+  // Step 1: Inputs
   identityPhotos: string[];
   poseReference: string | null;
   backgroundImage: string | null;
   outfitPrompt: string;
   ambiancePrompt: string;
   posePrompt: string;
+
+  // Step 1: Output
   mannequinImage: string | null;
   isGeneratingMannequin: boolean;
-  detectedPoints: PlacementPoint[];
+
+  // Step 2: Jewelry + placement prompt
   jewelryItems: BannerJewelry[];
-  isDetectingPoints: boolean;
+  placementPrompt: string;
   bannerImage: string | null;
   isGeneratingBanner: boolean;
-  selectedJewelryId: string | null;
+
+  // Step 3: Refinement
   isRepositioning: boolean;
+
+  // History
   mannequinHistory: string[];
   bannerHistory: string[];
+
+  // Error
   error: string | null;
 
-  setCurrentStep: (step: 1 | 2 | 3 | 4) => void;
+  // Actions
+  setCurrentStep: (step: 1 | 2 | 3) => void;
   addIdentityPhoto: (base64: string) => void;
   removeIdentityPhoto: (index: number) => void;
   setPoseReference: (base64: string | null) => void;
@@ -34,15 +46,12 @@ interface BannerStore {
   setPosePrompt: (text: string) => void;
   setMannequinImage: (base64: string | null) => void;
   setIsGeneratingMannequin: (v: boolean) => void;
-  setDetectedPoints: (points: PlacementPoint[]) => void;
-  setIsDetectingPoints: (v: boolean) => void;
   addJewelry: (item: BannerJewelry) => void;
   removeJewelry: (id: string) => void;
-  assignJewelry: (jewelryId: string, pointId: number) => void;
-  unassignJewelry: (jewelryId: string) => void;
+  updateJewelryName: (id: string, name: string) => void;
+  setPlacementPrompt: (text: string) => void;
   setBannerImage: (base64: string | null) => void;
   setIsGeneratingBanner: (v: boolean) => void;
-  setSelectedJewelryId: (id: string | null) => void;
   setIsRepositioning: (v: boolean) => void;
   pushToMannequinHistory: (base64: string) => void;
   undoMannequin: () => void;
@@ -50,7 +59,7 @@ interface BannerStore {
   undoBanner: () => void;
   setError: (e: string | null) => void;
   resetAll: () => void;
-  goBackToStep: (step: 1 | 2 | 3) => void;
+  goBackToStep: (step: 1 | 2) => void;
 }
 
 export const useBannerStore = create<BannerStore>((set) => ({
@@ -63,12 +72,10 @@ export const useBannerStore = create<BannerStore>((set) => ({
   posePrompt: '',
   mannequinImage: null,
   isGeneratingMannequin: false,
-  detectedPoints: [],
   jewelryItems: [],
-  isDetectingPoints: false,
+  placementPrompt: '',
   bannerImage: null,
   isGeneratingBanner: false,
-  selectedJewelryId: null,
   isRepositioning: false,
   mannequinHistory: [],
   bannerHistory: [],
@@ -92,41 +99,21 @@ export const useBannerStore = create<BannerStore>((set) => ({
   setMannequinImage: (base64) => set({ mannequinImage: base64 }),
   setIsGeneratingMannequin: (v) => set({ isGeneratingMannequin: v }),
 
-  setDetectedPoints: (points) => set({ detectedPoints: points }),
-  setIsDetectingPoints: (v) => set({ isDetectingPoints: v }),
   addJewelry: (item) => set((s) => {
     if (s.jewelryItems.length >= 8) return s;
     return { jewelryItems: [...s.jewelryItems, item] };
   }),
   removeJewelry: (id) => set((s) => ({
     jewelryItems: s.jewelryItems.filter((j) => j.id !== id),
-    detectedPoints: s.detectedPoints.map((p) =>
-      p.assignedJewelryId === id ? { ...p, assignedJewelryId: null } : p
-    ),
   })),
-  assignJewelry: (jewelryId, pointId) => set((s) => ({
-    jewelryItems: s.jewelryItems.map((j) =>
-      j.id === jewelryId ? { ...j, assignedPointId: pointId } : j
-    ),
-    detectedPoints: s.detectedPoints.map((p) => {
-      if (p.id === pointId) return { ...p, assignedJewelryId: jewelryId };
-      if (p.assignedJewelryId === jewelryId) return { ...p, assignedJewelryId: null };
-      return p;
-    }),
+  updateJewelryName: (id, name) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, name } : j),
   })),
-  unassignJewelry: (jewelryId) => set((s) => ({
-    jewelryItems: s.jewelryItems.map((j) =>
-      j.id === jewelryId ? { ...j, assignedPointId: null } : j
-    ),
-    detectedPoints: s.detectedPoints.map((p) =>
-      p.assignedJewelryId === jewelryId ? { ...p, assignedJewelryId: null } : p
-    ),
-  })),
+  setPlacementPrompt: (text) => set({ placementPrompt: text }),
 
   setBannerImage: (base64) => set({ bannerImage: base64 }),
   setIsGeneratingBanner: (v) => set({ isGeneratingBanner: v }),
 
-  setSelectedJewelryId: (id) => set({ selectedJewelryId: id }),
   setIsRepositioning: (v) => set({ isRepositioning: v }),
 
   pushToMannequinHistory: (base64) => set((s) => ({
@@ -158,39 +145,30 @@ export const useBannerStore = create<BannerStore>((set) => ({
     posePrompt: '',
     mannequinImage: null,
     isGeneratingMannequin: false,
-    detectedPoints: [],
     jewelryItems: [],
-    isDetectingPoints: false,
+    placementPrompt: '',
     bannerImage: null,
     isGeneratingBanner: false,
-    selectedJewelryId: null,
     isRepositioning: false,
     mannequinHistory: [],
     bannerHistory: [],
     error: null,
   }),
 
-  goBackToStep: (step) => set((s) => {
+  goBackToStep: (step) => set(() => {
     if (step === 1) {
       return {
-        currentStep: 1,
-        detectedPoints: [],
+        currentStep: 1 as const,
         bannerImage: null,
         bannerHistory: [],
-        selectedJewelryId: null,
-        error: null,
-        jewelryItems: s.jewelryItems.map((j) => ({ ...j, assignedPointId: null })),
-      };
-    }
-    if (step === 2) {
-      return {
-        currentStep: 2,
-        bannerImage: null,
-        bannerHistory: [],
-        selectedJewelryId: null,
         error: null,
       };
     }
-    return { currentStep: step as 1 | 2 | 3 | 4, error: null };
+    return {
+      currentStep: 2 as const,
+      bannerImage: null,
+      bannerHistory: [],
+      error: null,
+    };
   }),
 }));

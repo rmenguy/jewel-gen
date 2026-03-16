@@ -1,17 +1,16 @@
 import { useState } from 'react';
 import { useBannerStore } from '../stores/useBannerStore';
-import { generateBannerMannequin, detectPlacementPoints, generateBannerWithJewelry, freeformEditImage } from '../services/geminiService';
+import { generateBannerMannequin, generateBannerWithJewelry, freeformEditImage } from '../services/geminiService';
 import { downloadBase64Image } from '../services/downloadService';
 import { BannerJewelry } from '../types';
 
 const STEPS = [
   { num: 1, label: 'Mannequin' },
-  { num: 2, label: 'Placement' },
-  { num: 3, label: 'Génération' },
-  { num: 4, label: 'Refinement' },
+  { num: 2, label: 'Bijoux' },
+  { num: 3, label: 'Refinement' },
 ] as const;
 
-function Stepper({ current }: { current: 1 | 2 | 3 | 4 }) {
+function Stepper({ current }: { current: 1 | 2 | 3 }) {
   return (
     <div className="flex items-center justify-center gap-2 py-3 bg-gray-50 border-b border-gray-200">
       {STEPS.map((step, i) => (
@@ -50,14 +49,14 @@ function readFileAsBase64(file: File): Promise<string> {
 
 export default function BannerEngine() {
   const store = useBannerStore();
-  const [selectedJewelryForAssign, setSelectedJewelryForAssign] = useState<string | null>(null);
   const [repositionPrompt, setRepositionPrompt] = useState('');
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState('');
 
   const handleAddIdentityPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const base64 = await readFileAsBase64(file);
-    store.addIdentityPhoto(base64);
+    store.addIdentityPhoto(await readFileAsBase64(file));
     e.target.value = '';
   };
 
@@ -84,10 +83,18 @@ export default function BannerEngine() {
       id: crypto.randomUUID(),
       name,
       imageBase64: base64,
-      assignedPointId: null,
     };
     store.addJewelry(item);
+    setEditingNameId(item.id);
+    setEditingNameValue(name);
     e.target.value = '';
+  };
+
+  const handleSaveName = (id: string) => {
+    if (editingNameValue.trim()) {
+      store.updateJewelryName(id, editingNameValue.trim());
+    }
+    setEditingNameId(null);
   };
 
   const handleGenerateMannequin = async () => {
@@ -102,12 +109,8 @@ export default function BannerEngine() {
         store.pushToMannequinHistory(store.mannequinImage);
       }
       const result = await generateBannerMannequin(
-        store.identityPhotos,
-        store.poseReference,
-        store.backgroundImage,
-        store.outfitPrompt,
-        store.ambiancePrompt,
-        store.posePrompt,
+        store.identityPhotos, store.poseReference, store.backgroundImage,
+        store.outfitPrompt, store.ambiancePrompt, store.posePrompt,
       );
       store.setMannequinImage(result);
     } catch (err: any) {
@@ -117,49 +120,25 @@ export default function BannerEngine() {
     }
   };
 
-  const handleAcceptMannequin = async () => {
-    store.setIsDetectingPoints(true);
-    store.setError(null);
-    try {
-      const points = await detectPlacementPoints(store.mannequinImage!);
-      store.setDetectedPoints(points);
-      store.setCurrentStep(2);
-    } catch (err: any) {
-      store.setError(err.message || 'Erreur de détection');
-    } finally {
-      store.setIsDetectingPoints(false);
-    }
-  };
-
-  const handlePointClick = (pointId: number) => {
-    if (!selectedJewelryForAssign) return;
-    store.assignJewelry(selectedJewelryForAssign, pointId);
-    setSelectedJewelryForAssign(null);
-  };
-
   const handleGenerateBanner = async () => {
-    const assignments = store.jewelryItems
-      .filter((j) => j.assignedPointId !== null)
-      .map((j) => ({
-        jewelry: j,
-        point: store.detectedPoints.find((p) => p.id === j.assignedPointId)!,
-      }))
-      .filter((a) => a.point);
-
-    if (assignments.length === 0) {
-      store.setError('Assigne au moins un bijou à un point');
+    if (store.jewelryItems.length === 0) {
+      store.setError('Ajoute au moins un bijou');
       return;
     }
-
+    if (!store.placementPrompt.trim()) {
+      store.setError('Décris le placement des bijoux');
+      return;
+    }
     store.setError(null);
     store.setIsGeneratingBanner(true);
     try {
       if (store.bannerImage) {
         store.pushToBannerHistory(store.bannerImage);
       }
-      const result = await generateBannerWithJewelry(store.mannequinImage!, assignments);
+      const result = await generateBannerWithJewelry(
+        store.mannequinImage!, store.jewelryItems, store.placementPrompt,
+      );
       store.setBannerImage(result);
-      store.setCurrentStep(3);
     } catch (err: any) {
       store.setError(err.message || 'Erreur de génération');
     } finally {
@@ -168,17 +147,14 @@ export default function BannerEngine() {
   };
 
   const handleReposition = async () => {
-    if (!store.selectedJewelryId || !repositionPrompt.trim()) return;
-    const jewelry = store.jewelryItems.find((j) => j.id === store.selectedJewelryId);
-    if (!jewelry) return;
-
+    if (!repositionPrompt.trim()) return;
     store.setIsRepositioning(true);
     store.setError(null);
     try {
       store.pushToBannerHistory(store.bannerImage!);
       const result = await freeformEditImage(
         store.bannerImage!,
-        `Reposition the ${jewelry.name}: ${repositionPrompt}. Keep EVERYTHING else EXACTLY identical.`,
+        `${repositionPrompt}. Keep EVERYTHING else EXACTLY identical — same model, same pose, same lighting, same other jewelry.`,
       );
       store.setBannerImage(result);
       setRepositionPrompt('');
@@ -189,8 +165,7 @@ export default function BannerEngine() {
     }
   };
 
-  const assignedCount = store.jewelryItems.filter((j) => j.assignedPointId !== null).length;
-  const isLoading = store.isGeneratingMannequin || store.isDetectingPoints || store.isGeneratingBanner || store.isRepositioning;
+  const isLoading = store.isGeneratingMannequin || store.isGeneratingBanner || store.isRepositioning;
 
   return (
     <div className="flex flex-col h-full">
@@ -263,59 +238,71 @@ export default function BannerEngine() {
 
               <div className="mb-3">
                 <div className="text-xs font-semibold text-gray-500 mb-1">Habits</div>
-                <textarea
-                  value={store.outfitPrompt}
-                  onChange={(e) => store.setOutfitPrompt(e.target.value)}
+                <textarea value={store.outfitPrompt} onChange={(e) => store.setOutfitPrompt(e.target.value)}
                   placeholder="White crochet top, bohemian..."
-                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none"
-                />
+                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none" />
               </div>
-
               <div className="mb-3">
                 <div className="text-xs font-semibold text-gray-500 mb-1">Ambiance / Éclairage</div>
-                <textarea
-                  value={store.ambiancePrompt}
-                  onChange={(e) => store.setAmbiancePrompt(e.target.value)}
+                <textarea value={store.ambiancePrompt} onChange={(e) => store.setAmbiancePrompt(e.target.value)}
                   placeholder="Warm golden hour, sun-kissed..."
-                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none"
-                />
+                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none" />
               </div>
-
               <div className="mb-3">
                 <div className="text-xs font-semibold text-gray-500 mb-1">Pose / Cadrage</div>
-                <textarea
-                  value={store.posePrompt}
-                  onChange={(e) => store.setPosePrompt(e.target.value)}
+                <textarea value={store.posePrompt} onChange={(e) => store.setPosePrompt(e.target.value)}
                   placeholder="Tight bust crop, hands framing..."
-                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none"
-                />
+                  className="w-full h-16 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none" />
               </div>
 
-              <button
-                onClick={handleGenerateMannequin}
-                disabled={isLoading || store.identityPhotos.length === 0}
-                className="w-full py-2.5 bg-indigo-500 text-white rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-indigo-600 transition-colors"
-              >
+              <button onClick={handleGenerateMannequin} disabled={isLoading || store.identityPhotos.length === 0}
+                className="w-full py-2.5 bg-indigo-500 text-white rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-indigo-600 transition-colors">
                 {store.isGeneratingMannequin ? 'Génération...' : 'Générer le mannequin →'}
               </button>
             </>
           ) : (
-            <div className="text-xs text-gray-500">
-              <h3 className="text-sm font-bold text-gray-700 mb-2">Récapitulatif</h3>
-              <p>{store.identityPhotos.length} photo(s) identité</p>
-              {store.poseReference && <p>Photo de pose fournie</p>}
-              {store.backgroundImage && <p>Image décor fournie</p>}
-              {store.outfitPrompt && <p className="truncate">Habits: {store.outfitPrompt}</p>}
-              {store.ambiancePrompt && <p className="truncate">Ambiance: {store.ambiancePrompt}</p>}
-            </div>
+            <>
+              <h3 className="text-sm font-bold text-gray-700 mb-2">Placement des bijoux</h3>
+              <p className="text-[11px] text-gray-400 mb-3">
+                Décris où placer chaque bijou en utilisant son nom.
+              </p>
+              <textarea
+                value={store.placementPrompt}
+                onChange={(e) => store.setPlacementPrompt(e.target.value)}
+                placeholder={store.jewelryItems.length > 0
+                  ? `Ex:\n${store.jewelryItems.map(j => `"${j.name}" → ras du cou / poitrine / oreille gauche...`).join('\n')}`
+                  : 'Ajoute des bijoux puis décris leur placement...'}
+                className="w-full h-40 border border-gray-300 rounded-lg p-2 text-xs resize-none focus:border-indigo-400 focus:outline-none mb-3"
+              />
+              <button onClick={handleGenerateBanner}
+                disabled={isLoading || store.jewelryItems.length === 0 || !store.placementPrompt.trim()}
+                className="w-full py-2.5 bg-indigo-500 text-white rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-indigo-600 transition-colors">
+                {store.isGeneratingBanner ? 'Génération...' : `Générer avec ${store.jewelryItems.length} bijou(x) →`}
+              </button>
+
+              {store.currentStep === 3 && (
+                <>
+                  <hr className="my-4 border-gray-200" />
+                  <h3 className="text-sm font-bold text-gray-700 mb-2">Refinement</h3>
+                  <p className="text-[11px] text-gray-400 mb-2">Ajuste le placement ou tout autre détail.</p>
+                  <textarea value={repositionPrompt} onChange={(e) => setRepositionPrompt(e.target.value)}
+                    placeholder='Ex: Monte le collier de 2cm, tourne la bague...'
+                    className="w-full h-20 border-2 border-purple-400 rounded-lg p-2 text-xs resize-none focus:border-purple-500 focus:outline-none mb-2" />
+                  <button onClick={handleReposition} disabled={!repositionPrompt.trim() || isLoading}
+                    className="w-full py-2 bg-purple-600 text-white rounded-lg font-bold text-sm disabled:opacity-50 hover:bg-purple-700 transition-colors">
+                    {store.isRepositioning ? 'Repositionnement...' : 'Appliquer'}
+                  </button>
+                </>
+              )}
+            </>
           )}
         </div>
 
         {/* CENTER PANEL */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-            <div className="relative w-full max-w-[600px] aspect-video bg-gradient-to-br from-amber-50 to-orange-100 rounded-xl border-2 border-gray-200 overflow-hidden">
-              {(store.currentStep >= 3 && store.bannerImage) ? (
+            <div className="relative w-full max-w-[640px] aspect-video bg-gradient-to-br from-amber-50 to-orange-100 rounded-xl border-2 border-gray-200 overflow-hidden">
+              {store.bannerImage ? (
                 <img src={store.bannerImage} alt="Banner" className="w-full h-full object-contain" />
               ) : store.mannequinImage ? (
                 <img src={store.mannequinImage} alt="Mannequin" className="w-full h-full object-contain" />
@@ -326,46 +313,10 @@ export default function BannerEngine() {
                 </div>
               )}
 
-              {store.currentStep === 2 && store.detectedPoints.map((point) => {
-                const assigned = point.assignedJewelryId !== null;
-                const jewelry = assigned ? store.jewelryItems.find((j) => j.id === point.assignedJewelryId) : null;
-                return (
-                  <div
-                    key={point.id}
-                    className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-                    style={{ left: `${point.x}%`, top: `${point.y}%` }}
-                    onClick={() => handlePointClick(point.id)}
-                    title={point.label}
-                  >
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white border-2 border-white shadow-lg ${
-                      assigned ? 'bg-amber-500 ring-2 ring-amber-300' : 'bg-indigo-500 hover:bg-indigo-600'
-                    }`}>
-                      {point.id}
-                    </div>
-                    {jewelry && (
-                      <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap font-semibold">
-                        {jewelry.name}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {store.currentStep === 4 && store.selectedJewelryId && (() => {
-                const jewelry = store.jewelryItems.find((j) => j.id === store.selectedJewelryId);
-                const point = jewelry?.assignedPointId ? store.detectedPoints.find((p) => p.id === jewelry.assignedPointId) : null;
-                if (!point) return null;
-                return (
-                  <div className="absolute border-2 border-dashed border-purple-500 rounded-lg w-24 h-24 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                    style={{ left: `${point.x}%`, top: `${point.y}%` }} />
-                );
-              })()}
-
               {isLoading && (
                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                   <div className="bg-white rounded-lg px-4 py-2 text-sm font-semibold text-indigo-600">
                     {store.isGeneratingMannequin ? 'Génération du mannequin...' :
-                     store.isDetectingPoints ? 'Détection des points...' :
                      store.isGeneratingBanner ? 'Génération de la bannière...' :
                      'Repositionnement...'}
                   </div>
@@ -387,8 +338,8 @@ export default function BannerEngine() {
                   className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Undo</button>
                 <button onClick={handleGenerateMannequin} disabled={isLoading || store.identityPhotos.length === 0}
                   className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">Regénérer</button>
-                <button onClick={handleAcceptMannequin} disabled={!store.mannequinImage || isLoading}
-                  className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold disabled:opacity-30">Accepter → Placement</button>
+                <button onClick={() => store.setCurrentStep(2)} disabled={!store.mannequinImage || isLoading}
+                  className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold disabled:opacity-30">Accepter → Bijoux</button>
                 {store.mannequinImage && (
                   <button onClick={() => downloadBase64Image(store.mannequinImage!, 'banner-mannequin.png')}
                     className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600">Download</button>
@@ -399,146 +350,66 @@ export default function BannerEngine() {
               <>
                 <button onClick={() => store.goBackToStep(1)} disabled={isLoading}
                   className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Mannequin</button>
-                <button onClick={handleAcceptMannequin} disabled={isLoading}
-                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">Re-détecter</button>
-                <button onClick={handleGenerateBanner} disabled={assignedCount === 0 || isLoading}
-                  className="px-3 py-1.5 bg-indigo-500 text-white rounded-md text-xs font-semibold disabled:opacity-30">
-                  Générer bannière → ({assignedCount}/{store.jewelryItems.length})
-                </button>
+                {store.bannerImage && (
+                  <>
+                    <button onClick={() => store.undoBanner()} disabled={store.bannerHistory.length === 0 || isLoading}
+                      className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Undo</button>
+                    <button onClick={() => store.setCurrentStep(3)} disabled={isLoading}
+                      className="px-3 py-1.5 bg-purple-600 text-white rounded-md text-xs font-semibold disabled:opacity-30">Repositionner</button>
+                    <button onClick={() => downloadBase64Image(store.bannerImage!, 'banner-final.png')}
+                      className="px-3 py-1.5 bg-green-500 text-white rounded-md text-xs font-semibold">Download ↓</button>
+                  </>
+                )}
               </>
             )}
             {store.currentStep === 3 && (
               <>
                 <button onClick={() => store.goBackToStep(2)} disabled={isLoading}
-                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Placement</button>
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Bijoux</button>
                 <button onClick={() => store.undoBanner()} disabled={store.bannerHistory.length === 0 || isLoading}
                   className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">← Undo</button>
-                <button onClick={handleGenerateBanner} disabled={isLoading}
-                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs text-gray-600 disabled:opacity-30">Regénérer</button>
-                <button onClick={() => store.setCurrentStep(4)} disabled={isLoading}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-md text-xs font-semibold disabled:opacity-30">Repositionner un bijou</button>
                 <button onClick={() => downloadBase64Image(store.bannerImage!, 'banner-final.png')}
                   className="px-3 py-1.5 bg-green-500 text-white rounded-md text-xs font-semibold">Download ↓</button>
               </>
-            )}
-            {store.currentStep === 4 && (
-              <div className="flex items-center gap-2 w-full max-w-xl">
-                <input
-                  type="text"
-                  value={repositionPrompt}
-                  onChange={(e) => setRepositionPrompt(e.target.value)}
-                  placeholder="Ex: Monte le collier de 2cm, plus près du cou"
-                  className="flex-1 px-3 py-1.5 border-2 border-purple-500 rounded-lg text-xs focus:outline-none"
-                  onKeyDown={(e) => e.key === 'Enter' && handleReposition()}
-                />
-                <button onClick={handleReposition} disabled={!store.selectedJewelryId || !repositionPrompt.trim() || isLoading}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-semibold disabled:opacity-30 whitespace-nowrap">Repositionner</button>
-                <button onClick={() => { store.setCurrentStep(3); store.setSelectedJewelryId(null); }}
-                  className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">Terminé ✓</button>
-              </div>
             )}
           </div>
         </div>
 
         {/* RIGHT PANEL */}
         <div className="w-60 border-l border-gray-200 p-4 overflow-y-auto bg-white flex-shrink-0">
-          <h3 className="text-sm font-bold text-gray-700 mb-1">
-            {store.currentStep === 4 ? 'Quel bijou repositionner ?' : 'Bijoux à placer'}
-          </h3>
-          {store.currentStep === 2 && (
-            <p className="text-[11px] text-gray-400 mb-3">Clique un bijou → clique un point</p>
-          )}
-          {store.currentStep === 4 && (
-            <p className="text-[11px] text-gray-400 mb-3">Clique pour sélectionner</p>
-          )}
+          <h3 className="text-sm font-bold text-gray-700 mb-1">Bijoux ({store.jewelryItems.length}/8)</h3>
+          <p className="text-[11px] text-gray-400 mb-3">Uploade et nomme chaque bijou</p>
 
           <label className="w-full h-10 mb-3 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-xs cursor-pointer hover:border-indigo-400 hover:text-indigo-400">
-            + Ajouter bijou ({store.jewelryItems.length}/8)
+            + Ajouter bijou
             <input type="file" accept="image/*" className="hidden" onChange={handleAddJewelry} disabled={store.jewelryItems.length >= 8} />
           </label>
 
           <div className="flex flex-col gap-2">
-            {store.jewelryItems.map((jewelry) => {
-              const point = jewelry.assignedPointId !== null
-                ? store.detectedPoints.find((p) => p.id === jewelry.assignedPointId)
-                : null;
-              const isSelected = store.currentStep === 2
-                ? selectedJewelryForAssign === jewelry.id
-                : store.currentStep === 4
-                ? store.selectedJewelryId === jewelry.id
-                : false;
-              const isAssigned = jewelry.assignedPointId !== null;
-
-              return (
-                <div
-                  key={jewelry.id}
-                  className={`flex gap-2 items-center p-2 rounded-lg border cursor-pointer transition-colors ${
-                    isSelected ? 'border-indigo-500 bg-indigo-50' :
-                    isAssigned ? 'border-amber-400 bg-amber-50' :
-                    'border-gray-200 bg-gray-50'
-                  }`}
-                  onClick={() => {
-                    if (store.currentStep === 2) setSelectedJewelryForAssign(jewelry.id);
-                    if (store.currentStep === 4) store.setSelectedJewelryId(jewelry.id);
-                  }}
-                >
-                  <img src={jewelry.imageBase64} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-gray-700 truncate">{jewelry.name}</div>
-                    <div className={`text-[11px] ${isAssigned ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
-                      {isAssigned && point ? `→ Point ${point.id} · ${point.label}` : 'Non assigné'}
+            {store.jewelryItems.map((jewelry) => (
+              <div key={jewelry.id} className="flex gap-2 items-center p-2 rounded-lg border border-gray-200 bg-gray-50">
+                <img src={jewelry.imageBase64} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  {editingNameId === jewelry.id ? (
+                    <input type="text" value={editingNameValue}
+                      onChange={(e) => setEditingNameValue(e.target.value)}
+                      onBlur={() => handleSaveName(jewelry.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveName(jewelry.id)}
+                      className="w-full text-xs font-semibold border border-indigo-400 rounded px-1 py-0.5 focus:outline-none"
+                      autoFocus />
+                  ) : (
+                    <div className="text-xs font-semibold text-gray-700 truncate cursor-pointer hover:text-indigo-500"
+                      onClick={() => { setEditingNameId(jewelry.id); setEditingNameValue(jewelry.name); }}
+                      title="Cliquer pour renommer">
+                      {jewelry.name}
                     </div>
-                  </div>
-                  {isAssigned && store.currentStep === 2 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); store.unassignJewelry(jewelry.id); }}
-                      className="w-5 h-5 rounded-full bg-red-100 text-red-500 text-[10px] flex items-center justify-center hover:bg-red-200"
-                    >✕</button>
-                  )}
-                  {store.currentStep !== 2 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); store.removeJewelry(jewelry.id); }}
-                      className="w-5 h-5 rounded-full bg-red-100 text-red-500 text-[10px] flex items-center justify-center hover:bg-red-200"
-                    >✕</button>
                   )}
                 </div>
-              );
-            })}
+                <button onClick={() => store.removeJewelry(jewelry.id)}
+                  className="w-5 h-5 rounded-full bg-red-100 text-red-500 text-[10px] flex items-center justify-center hover:bg-red-200 flex-shrink-0">✕</button>
+              </div>
+            ))}
           </div>
-
-          {store.currentStep === 2 && store.detectedPoints.length > 0 && (
-            <>
-              <hr className="my-3 border-gray-200" />
-              <h3 className="text-xs font-bold text-gray-700 mb-2">Points détectés</h3>
-              <div className="flex flex-col gap-1 text-[11px] text-gray-500">
-                {store.detectedPoints.map((point) => {
-                  const jewelry = point.assignedJewelryId ? store.jewelryItems.find((j) => j.id === point.assignedJewelryId) : null;
-                  return (
-                    <div key={point.id} className="flex items-center gap-1.5">
-                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
-                        jewelry ? 'bg-amber-500' : 'bg-indigo-500'
-                      }`}>{point.id}</span>
-                      <span className="truncate">
-                        {point.label}
-                        {jewelry && <strong className="text-amber-500"> · {jewelry.name}</strong>}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {store.currentStep === 3 && (
-            <>
-              <hr className="my-3 border-gray-200" />
-              <div className="text-[11px] text-gray-500">
-                <div><strong>Résolution :</strong> 4K native</div>
-                <div><strong>Format :</strong> 16:9</div>
-                <div><strong>Bijoux :</strong> {assignedCount} placés</div>
-              </div>
-            </>
-          )}
         </div>
       </div>
     </div>
