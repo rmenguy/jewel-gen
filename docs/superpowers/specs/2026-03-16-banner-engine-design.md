@@ -9,7 +9,7 @@ Module de génération de bannières 4K (16:9) pour sites e-commerce de bijoux. 
 ### Étape 1 — Génération du mannequin
 
 L'utilisateur fournit :
-- **Photos d'identité** (1+) : photos de la personne réelle à reproduire
+- **Photos d'identité** (1-3 max) : photos de la personne réelle à reproduire
 - **Photo de pose** (optionnelle) : référence de composition/cadrage (ex: buste serré mains encadrantes)
 - **Image de décor** (optionnelle) : arrière-plan souhaité
 - **Prompt habits** : description des vêtements ("white crochet top, bohemian")
@@ -23,7 +23,7 @@ L'IA génère un mannequin en format 16:9 qui ressemble à la personne des photo
 L'IA analyse l'image générée et détecte automatiquement toutes les zones où un bijou peut être placé. Chaque point a :
 - Un numéro (1, 2, 3...)
 - Un label descriptif en français ("Oreille gauche lobe", "Collier mi-poitrine")
-- Une zone (`ear`, `neck`, `finger`, `wrist`, `back`)
+- Une zone (`ear`, `neck`, `chest`, `finger`, `wrist`, `ankle`)
 - Des coordonnées x,y en pourcentage (0-100)
 
 Les points s'affichent en overlay sur l'image. L'utilisateur importe ses bijoux (image + nom) et les assigne aux points en cliquant : sélection d'un bijou → clic sur un point. Les points libres sont indigo, les points assignés amber avec le nom du bijou.
@@ -79,7 +79,7 @@ Même pattern que les autres engines (MannequinEngine, ProductionEngine).
 interface PlacementPoint {
   id: number              // 1, 2, 3...
   label: string           // "Oreille gauche lobe"
-  zone: 'ear' | 'neck' | 'finger' | 'wrist' | 'back'
+  zone: 'ear' | 'neck' | 'chest' | 'finger' | 'wrist' | 'ankle'
   x: number               // 0-100 (% from left)
   y: number               // 0-100 (% from top)
   assignedJewelryId: string | null
@@ -101,7 +101,7 @@ interface BannerState {
   currentStep: 1 | 2 | 3 | 4
 
   // Step 1: Inputs
-  identityPhotos: string[]       // base64 data URIs
+  identityPhotos: string[]       // base64 data URIs (max 3)
   poseReference: string | null
   backgroundImage: string | null
   outfitPrompt: string
@@ -125,8 +125,12 @@ interface BannerState {
   selectedJewelryId: string | null
   isRepositioning: boolean
 
-  // History (undo)
-  imageHistory: string[]
+  // History (undo) — separate per phase
+  mannequinHistory: string[]     // step 1 undo stack
+  bannerHistory: string[]        // steps 3-4 undo stack
+
+  // Error
+  error: string | null
 }
 ```
 
@@ -143,7 +147,9 @@ interface BannerState {
 - `assignJewelry(jewelryId, pointId)` / `unassignJewelry(jewelryId)` — assignation
 - `setBannerImage(base64)` — résultat étape 3
 - `setSelectedJewelryId(id | null)` — sélection pour repositionnement
-- `pushToHistory(base64)` / `undo()` — historique
+- `pushToMannequinHistory(base64)` / `undoMannequin()` — historique mannequin (step 1)
+- `pushToBannerHistory(base64)` / `undoBanner()` — historique bannière (steps 3-4)
+- `setError(e: string | null)` — gestion erreurs
 - `resetAll()` — reset complet
 
 ## Fonctions API — geminiService.ts
@@ -166,6 +172,8 @@ export async function generateBannerMannequin(
 - Si poseReference fournie : "Match this exact pose and framing" + image
 - Si backgroundImage fournie : "Use this background environment" + image
 - Prompt explicite : format 16:9 landscape, pas de bijoux, zones de placement propres
+- Utilise `imageConfig: { imageSize: '4K' }` pour la meilleure résolution
+- Le 16:9 est une instruction prompt uniquement (Gemini ne garantit pas le ratio exact) — si le résultat n'est pas 16:9, l'UI affiche l'image dans un container 16:9 avec letterboxing
 - Wrappé dans `withRetry()`
 
 ### detectPlacementPoints()
@@ -176,10 +184,12 @@ export async function detectPlacementPoints(
 ): Promise<PlacementPoint[]>
 ```
 
-- Modèle : `gemini-3-pro-image-preview` (text-only output, pas d'image générée)
+- Modèle : `gemini-3-pro-image-preview` avec `generationConfig: { responseModalities: ['TEXT'], responseMimeType: 'application/json' }`
 - Prompt : analyse de l'image, détection de toutes les zones de placement possibles
-- Retourne un JSON array parsé
+- Retourne un JSON array parsé avec markdown fence stripping (pattern existant dans `segmentJewelry`)
 - Validation : filtre les points hors range (x/y < 0 ou > 100)
+- Fallback si JSON invalide : retourne tableau vide + affiche message "Re-détecter" dans l'UI
+- Maximum 8 bijoux simultanés par bannière
 
 ### generateBannerWithJewelry()
 
@@ -225,7 +235,7 @@ freeformEditImage(
 
 ## Résolution
 
-Résolution native maximale de Gemini (actuellement 1024x576 en 16:9). Pas d'upscaling dans le MVP — à réévaluer si la qualité ne suffit pas.
+Utilise `imageConfig: { imageSize: '4K' }` (pattern existant dans le codebase) pour la meilleure résolution native. Pas d'upscaling dans le MVP — à réévaluer si la qualité ne suffit pas.
 
 ## Contraintes techniques
 
@@ -235,3 +245,11 @@ Résolution native maximale de Gemini (actuellement 1024x576 en 16:9). Pas d'ups
 - `withRetry()` sur tous les appels Gemini
 - Download via `downloadBase64Image()` existant
 - Undo avec historique (max 10 images, pattern existant)
+
+## Navigation entre étapes
+
+- **Retour étape 3→2** : conserve les assignations bijoux, permet de re-détecter ou réassigner
+- **Retour étape 2→1** : conserve les bijoux importés, reset les assignations et les points détectés
+- **Retour étape 3→1** : conserve les bijoux, reset assignations + points + bannière
+- L'historique undo est **par étape** : step 1 = historique mannequins, step 3-4 = historique bannières. Changer d'étape ne pollue pas l'historique de l'autre.
+- Les bijoux peuvent être ajoutés/retirés à n'importe quelle étape (panneau droit toujours accessible)
