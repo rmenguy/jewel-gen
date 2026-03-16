@@ -58,7 +58,7 @@ export interface ProductionItem {
   pendantWidth?: number;   // cm — pendant/charm width (l)
 }
 
-export type EngineType = 'CATALOG' | 'MANNEQUIN' | 'PRODUCTION' | 'BATCH';
+export type EngineType = 'CATALOG' | 'MANNEQUIN' | 'PRODUCTION' | 'BATCH' | 'BANNER';
 
 // Batch Processing Types
 export interface BatchItem {
@@ -186,4 +186,22 @@ export interface SupabaseProduct {
   thumbnail_url?: string;
   created_at: string;
   metadata: Record<string, any>;
+}
+
+// ─── Banner Engine ───────────────────────────────────────────
+
+export interface PlacementPoint {
+  id: number;
+  label: string;
+  zone: 'ear' | 'neck' | 'chest' | 'finger' | 'wrist' | 'ankle';
+  x: number;  // 0-100 (% from left)
+  y: number;  // 0-100 (% from top)
+  assignedJewelryId: string | null;
+}
+
+export interface BannerJewelry {
+  id: string;
+  name: string;
+  imageBase64: string;
+  assignedPointId: number | null;
 }
