@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, PlacementPoint, BannerJewelry } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -1879,3 +1879,216 @@ export const applyBatchRefinements = async (
 
     throw new Error(`Refinement failed on all models. Last: ${lastError.substring(0, 150)}`);
 };
+
+// ─── Banner Engine ───────────────────────────────────────────
+
+export async function generateBannerMannequin(
+  identityPhotos: string[],
+  poseReference: string | null,
+  backgroundImage: string | null,
+  outfitPrompt: string,
+  ambiancePrompt: string,
+  posePrompt: string,
+): Promise<string> {
+  if (identityPhotos.length === 0) {
+    throw new Error('At least one identity photo is required');
+  }
+
+  const parts: any[] = [];
+
+  for (const photo of identityPhotos) {
+    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+  }
+
+  if (poseReference) {
+    const raw = poseReference.includes('base64,') ? poseReference.split(',')[1] : poseReference;
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+  }
+
+  if (backgroundImage) {
+    const raw = backgroundImage.includes('base64,') ? backgroundImage.split(',')[1] : backgroundImage;
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+  }
+
+  let prompt = `Generate a HIGH-QUALITY professional banner photograph in LANDSCAPE 16:9 format.
+
+CRITICAL — IDENTITY PRESERVATION:
+The model in the photo MUST look IDENTICAL to the person in the ${identityPhotos.length} reference photo(s) provided. Same face, same skin tone, same features. This is a real person — preserve their exact appearance.
+
+OUTFIT: ${outfitPrompt || 'Elegant, fashionable clothing appropriate for a luxury jewelry brand banner.'}
+
+ATMOSPHERE & LIGHTING: ${ambiancePrompt || 'Professional studio lighting, warm and luxurious.'}
+`;
+
+  if (poseReference) {
+    prompt += `\nPOSE & FRAMING: Match the EXACT pose, body position, and camera framing of the pose reference image provided. Reproduce the composition precisely.\n`;
+  } else if (posePrompt) {
+    prompt += `\nPOSE & FRAMING: ${posePrompt}\n`;
+  } else {
+    prompt += `\nPOSE & FRAMING: Tight bust crop, confident direct gaze at camera, hands visible near décolleté area. Professional fashion editorial composition.\n`;
+  }
+
+  if (backgroundImage) {
+    prompt += `\nBACKGROUND: Use the background/environment from the background reference image provided. Integrate the model naturally into this setting.\n`;
+  }
+
+  prompt += `
+CRITICAL — NO JEWELRY:
+Do NOT add any jewelry, accessories, or adornments. The model's ears, neck, décolleté, wrists, and fingers must be COMPLETELY BARE and clean. These areas will receive jewelry in a later step.
+
+OUTPUT: Wide landscape 16:9 banner format. Highest possible resolution and photographic quality.`;
+
+  parts.push({ text: prompt });
+
+  const requestBody = {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      imageConfig: { imageSize: '4K' },
+    },
+  };
+
+  return withRetry(async () => {
+    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error('No image in banner mannequin response');
+  });
+}
+
+export async function detectPlacementPoints(
+  mannequinImage: string,
+): Promise<PlacementPoint[]> {
+  const raw = mannequinImage.includes('base64,') ? mannequinImage.split(',')[1] : mannequinImage;
+
+  const prompt = `Analyze this image of a model/mannequin. Identify ALL body areas visible in the image where jewelry could be placed.
+
+For each area, return a JSON object with:
+- "id": sequential number starting at 1
+- "label": descriptive label in French (e.g., "Oreille gauche lobe", "Cou ras-de-cou", "Index main droite")
+- "zone": one of "ear", "neck", "chest", "finger", "wrist", "ankle"
+- "x": horizontal position as percentage from LEFT edge (0 = far left, 100 = far right)
+- "y": vertical position as percentage from TOP edge (0 = top, 100 = bottom)
+
+IMPORTANT:
+- Only include areas that are CLEARLY VISIBLE in the image
+- Use "neck" for choker/ras-de-cou level, "chest" for collier/sautoir level
+- For ears, distinguish lobe vs helix positions
+- For fingers, specify which finger and which hand
+- Coordinates must be precise — place the point at the EXACT center of where the jewelry would sit
+
+Return ONLY a valid JSON array. No explanation, no markdown fences.`;
+
+  const requestBody = {
+    contents: [{
+      parts: [
+        { inlineData: { mimeType: 'image/png', data: raw } },
+        { text: prompt },
+      ],
+    }],
+    generationConfig: {
+      responseModalities: ['TEXT'],
+      responseMimeType: 'application/json',
+    },
+  };
+
+  return withRetry(async () => {
+    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
+
+    const textPart = response.candidates?.[0]?.content?.parts?.find(
+      (p: any) => p.text
+    );
+    if (!textPart?.text) {
+      console.warn('[BANNER] No text in detectPlacementPoints response');
+      return [];
+    }
+
+    let jsonStr = textPart.text.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    }
+
+    let points: PlacementPoint[];
+    try {
+      points = JSON.parse(jsonStr);
+    } catch (e) {
+      console.warn('[BANNER] Failed to parse placement points JSON:', jsonStr.substring(0, 200));
+      return [];
+    }
+
+    if (!Array.isArray(points)) return [];
+
+    return points
+      .filter((p) => p.id && p.label && p.zone && typeof p.x === 'number' && typeof p.y === 'number')
+      .filter((p) => p.x >= 0 && p.x <= 100 && p.y >= 0 && p.y <= 100)
+      .map((p) => ({ ...p, assignedJewelryId: null }));
+  });
+}
+
+export async function generateBannerWithJewelry(
+  mannequinImage: string,
+  assignments: Array<{
+    jewelry: BannerJewelry;
+    point: PlacementPoint;
+  }>,
+): Promise<string> {
+  if (assignments.length === 0) {
+    throw new Error('At least one jewelry assignment is required');
+  }
+
+  const parts: any[] = [];
+
+  const mannequinRaw = mannequinImage.includes('base64,') ? mannequinImage.split(',')[1] : mannequinImage;
+  parts.push({ inlineData: { mimeType: 'image/png', data: mannequinRaw } });
+
+  for (const { jewelry } of assignments) {
+    const raw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+  }
+
+  const placementInstructions = assignments.map(({ jewelry, point }, i) =>
+    `${i + 1}. "${jewelry.name}" (image ${i + 2}) → Place at "${point.label}" (${point.zone} zone, position: ${point.x}% from left, ${point.y}% from top)`
+  ).join('\n');
+
+  const prompt = `You are a professional jewelry photographer. Add jewelry to this banner photo.
+
+FIRST IMAGE: The model/mannequin — this is the base photo. Preserve EVERYTHING about this image (face, pose, outfit, lighting, background) EXACTLY as-is.
+
+JEWELRY TO ADD (images ${2} through ${assignments.length + 1}):
+${placementInstructions}
+
+CRITICAL RULES:
+- Each jewelry piece must match its reference image EXACTLY — same design, same materials, same proportions
+- Place each piece at the PRECISE location described
+- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, and integration with skin/clothing
+- Multiple necklaces/chains must layer naturally with proper drape and spacing
+- Do NOT modify the model's face, pose, outfit, background, or lighting
+- Maintain the 16:9 landscape banner format
+- Highest possible resolution and photographic quality`;
+
+  parts.push({ text: prompt });
+
+  const requestBody = {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      imageConfig: { imageSize: '4K' },
+    },
+  };
+
+  return withRetry(async () => {
+    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error('No image in banner jewelry generation response');
+  });
+}
