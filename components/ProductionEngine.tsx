@@ -39,6 +39,12 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [stackingMode, setStackingMode] = useState(false);
   const [stackSelection, setStackSelection] = useState<Set<string>>(new Set());
   const [isStacking, setIsStacking] = useState(false);
+  const [stackMannequinImage, setStackMannequinImage] = useState<string | null>(null);
+  const [stackAttempts, setStackAttempts] = useState(1);
+  const [stackRatio, setStackRatio] = useState('1:1');
+  const [stackResults, setStackResults] = useState<(string | null)[]>([]);
+  const [stackGenerating, setStackGenerating] = useState(false);
+  const stackFileRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showRefModal, setShowRefModal] = useState(false);
   const [refImage, setRefImage] = useState<string | null>(null);
@@ -79,6 +85,16 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
       reader.onloadend = () => setMannequinImage(reader.result as string);
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleStackMannequinUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => setStackMannequinImage(reader.result as string);
+        reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
   };
 
   const handleRefUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -507,6 +523,43 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 </div>
             </div>
 
+            {stackingMode && (
+                <div className="px-3 py-2 border-b border-gray-200 bg-purple-50/50 flex items-center gap-4 flex-wrap">
+                    {/* Upload Pose */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] uppercase font-bold text-purple-600">Pose</span>
+                        {stackMannequinImage ? (
+                            <div className="flex items-center gap-1">
+                                <img src={stackMannequinImage} className="w-8 h-8 rounded object-cover border border-purple-300" />
+                                <button onClick={() => setStackMannequinImage(null)} className="w-4 h-4 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center text-[10px] font-bold">&times;</button>
+                            </div>
+                        ) : (
+                            <button onClick={() => stackFileRef.current?.click()} className="text-[9px] px-2 py-1 rounded border border-purple-300 bg-white text-purple-600 hover:bg-purple-50 font-bold transition-colors">
+                                Upload
+                            </button>
+                        )}
+                    </div>
+                    {/* Attempts */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] uppercase font-bold text-purple-600">Essais</span>
+                        {[1, 2, 3, 4, 6].map(n => (
+                            <button key={n} onClick={() => setStackAttempts(n)} className={`text-[9px] w-6 h-6 rounded font-bold transition-colors ${stackAttempts === n ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
+                                {n}
+                            </button>
+                        ))}
+                    </div>
+                    {/* Ratio */}
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] uppercase font-bold text-purple-600">Ratio</span>
+                        {['1:1', '3:4', '4:3', '9:16', '16:9'].map(r => (
+                            <button key={r} onClick={() => setStackRatio(r)} className={`text-[9px] px-2 py-1 rounded font-bold transition-colors ${stackRatio === r ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
+                                {r}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-gray-50">
                  {queue.length === 0 && !productListInput ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl m-4">
@@ -627,6 +680,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
       <div className="w-1/2 flex flex-col gap-4">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 flex flex-col relative overflow-hidden">
              <input type="file" ref={baseImportRef} className="hidden" accept="image/*" onChange={handleBaseImport} />
+             <input type="file" ref={stackFileRef} className="hidden" accept="image/*" onChange={handleStackMannequinUpload} />
              <input type="file" ref={refineFileRef} className="hidden" accept="image/*" onChange={(e) => {
                  const file = e.target.files?.[0];
                  if (file) {
