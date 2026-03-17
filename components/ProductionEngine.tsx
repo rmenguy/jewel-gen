@@ -345,18 +345,8 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     setStackSelection(newSet);
   };
 
-  const handleGenerateStacked = async () => {
-    const selectedItems = queue.filter(i => stackSelection.has(i.id));
-    if (selectedItems.length < 2) return;
-    setStackGenerating(true);
-    setIsStacking(true);
-    setStackResults(new Array(stackAttempts).fill(null));
-
-    const bareCache = { get: getBareCache, set: setBareCache };
-    const effectiveMannequin = stackMannequinImage || mannequinImage;
-
-    // Pre-analyze products
-    const products = await Promise.all(selectedItems.map(async (item) => {
+  const buildStackProducts = async (items: ProductionItem[]) => {
+    return Promise.all(items.map(async (item) => {
         let blueprint: JewelryBlueprint | undefined;
         if (blueprintEnabled) {
             try { blueprint = await analyzeJewelryProduct(item.imageUrl); } catch { /* proceed without */ }
@@ -371,6 +361,18 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 : undefined,
         };
     }));
+  };
+
+  const handleGenerateStacked = async () => {
+    const selectedItems = queue.filter(i => stackSelection.has(i.id));
+    if (selectedItems.length < 2) return;
+    setStackGenerating(true);
+    setIsStacking(true);
+    setStackResults(new Array(stackAttempts).fill(null));
+
+    const bareCache = { get: getBareCache, set: setBareCache };
+    const effectiveMannequin = stackMannequinImage || mannequinImage;
+    const products = await buildStackProducts(selectedItems);
 
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
@@ -382,6 +384,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
             setStackResults(prev => { const next = [...prev]; next[i] = resultImage; return next; });
         } catch (err: any) {
             console.error(`[STACK] Attempt ${i + 1} failed:`, err.message);
+            setStackResults(prev => { const next = [...prev]; next[i] = 'ERROR'; return next; });
         }
     }
 
@@ -396,22 +399,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
     const bareCache = { get: getBareCache, set: setBareCache };
     const effectiveMannequin = stackMannequinImage || mannequinImage;
-
-    const products = await Promise.all(selectedItems.map(async (item) => {
-        let blueprint: JewelryBlueprint | undefined;
-        if (blueprintEnabled) {
-            try { blueprint = await analyzeJewelryProduct(item.imageUrl); } catch { /* proceed without */ }
-        }
-        return {
-            imageUrl: item.imageUrl,
-            category: item.category || '',
-            name: item.name,
-            blueprint,
-            dimensions: (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
-                ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
-                : undefined,
-        };
-    }));
+    const products = await buildStackProducts(selectedItems);
 
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
@@ -422,6 +410,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
         setStackResults(prev => { const next = [...prev]; next[index] = resultImage; return next; });
     } catch (err: any) {
         console.error(`[STACK] Retry ${index} failed:`, err.message);
+        setStackResults(prev => { const next = [...prev]; next[index] = 'ERROR'; return next; });
     }
 
     setStackGenerating(false);
@@ -429,7 +418,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
 
   const handleSelectStackFavorite = (index: number) => {
     const image = stackResults[index];
-    if (!image) return;
+    if (!image || image === 'ERROR') return;
     const selectedItems = queue.filter(i => stackSelection.has(i.id));
     const stackedItem: ProductionItem = {
         id: crypto.randomUUID(),
@@ -762,7 +751,17 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     }`}>
                         {stackResults.map((result, idx) => (
                             <div key={idx} className="relative bg-white rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center group">
-                                {result ? (
+                                {result === 'ERROR' ? (
+                                    <div className="flex flex-col items-center justify-center gap-2 p-3">
+                                        <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                                        <span className="text-[9px] text-red-500 font-bold">Failed</span>
+                                        <button
+                                            onClick={() => handleRetryStackVariant(idx)}
+                                            disabled={stackGenerating}
+                                            className="text-[9px] px-2 py-1 rounded bg-red-100 text-red-600 font-bold hover:bg-red-200 disabled:opacity-40 transition-colors"
+                                        >Retry</button>
+                                    </div>
+                                ) : result ? (
                                     <>
                                         <img src={result} className="w-full h-full object-contain" />
                                         <div className="absolute top-1.5 left-1.5 bg-purple-600 text-white text-[8px] font-bold w-5 h-5 rounded-full flex items-center justify-center">#{idx + 1}</div>
@@ -829,18 +828,18 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     </div>
                 ) : <p className="text-xs text-gray-400 uppercase tracking-widest">No Selection</p>}
              </div>
-             {stackResults.length > 0 && stackResults.some(r => r !== null) && (
+             {stackResults.length > 0 && stackResults.some(r => r && r !== 'ERROR') && (
                 <div className="border-t border-gray-200 bg-white flex-shrink-0">
                     <div className="h-14 flex items-center justify-between px-4">
                         <span className="text-[9px] font-mono text-purple-500 font-bold">
-                            {stackResults.filter(r => r !== null).length}/{stackResults.length} generated
+                            {stackResults.filter(r => r && r !== 'ERROR').length}/{stackResults.length} generated
                             {stackGenerating && ' — generating...'}
                         </span>
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => {
                                     stackResults.forEach((r, i) => {
-                                        if (r) {
+                                        if (r && r !== 'ERROR') {
                                             const base64 = r.includes('base64,') ? r : `data:image/png;base64,${r}`;
                                             downloadBase64Image(base64, `stack_v${i + 1}.png`);
                                         }
@@ -849,7 +848,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                                 className="text-[10px] h-8 px-3 bg-purple-600 text-white rounded font-bold hover:bg-purple-500 transition-colors flex items-center gap-1"
                             >
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                DOWNLOAD ALL ({stackResults.filter(r => r !== null).length})
+                                DOWNLOAD ALL ({stackResults.filter(r => r && r !== 'ERROR').length})
                             </button>
                             <button
                                 onClick={() => { setStackResults([]); }}
