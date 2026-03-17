@@ -44,7 +44,9 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const [stackRatio, setStackRatio] = useState('1:1');
   const [stackResults, setStackResults] = useState<(string | null)[]>([]);
   const [stackGenerating, setStackGenerating] = useState(false);
+  const [stackJewelry, setStackJewelry] = useState<Array<{ id: string; name: string; base64: string; category: string }>>([]);
   const stackFileRef = useRef<HTMLInputElement>(null);
+  const stackJewelryRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showRefModal, setShowRefModal] = useState(false);
   const [refImage, setRefImage] = useState<string | null>(null);
@@ -94,6 +96,24 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
         reader.onloadend = () => setStackMannequinImage(reader.result as string);
         reader.readAsDataURL(file);
     }
+    if (e.target) e.target.value = '';
+  };
+
+  const handleStackJewelryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setStackJewelry(prev => [...prev, {
+                id: crypto.randomUUID(),
+                name: file.name.replace(/\.[^.]+$/, ''),
+                base64: reader.result as string,
+                category: 'necklace',
+            }]);
+        };
+        reader.readAsDataURL(file);
+    });
     if (e.target) e.target.value = '';
   };
 
@@ -363,16 +383,32 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     }));
   };
 
-  const handleGenerateStacked = async () => {
+  const getStackProducts = async () => {
+    // Combine uploaded jewelry + selected queue items
+    const directProducts = stackJewelry.map(j => ({
+        imageUrl: j.base64,
+        category: j.category,
+        name: j.name,
+        blueprint: undefined as JewelryBlueprint | undefined,
+        dimensions: undefined as ProductDimensions | undefined,
+    }));
     const selectedItems = queue.filter(i => stackSelection.has(i.id));
-    if (selectedItems.length < 2) return;
+    const queueProducts = await buildStackProducts(selectedItems);
+    return [...directProducts, ...queueProducts];
+  };
+
+  const stackProductCount = stackJewelry.length + stackSelection.size;
+
+  const handleGenerateStacked = async () => {
+    if (stackProductCount < 1) return;
+    if (!stackMannequinImage && !mannequinImage) { alert('Upload une photo de base pour le stacking'); return; }
     setStackGenerating(true);
     setIsStacking(true);
     setStackResults(new Array(stackAttempts).fill(null));
 
     const bareCache = { get: getBareCache, set: setBareCache };
     const effectiveMannequin = stackMannequinImage || mannequinImage;
-    const products = await buildStackProducts(selectedItems);
+    const products = await getStackProducts();
 
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
@@ -393,13 +429,12 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   };
 
   const handleRetryStackVariant = async (index: number) => {
-    const selectedItems = queue.filter(i => stackSelection.has(i.id));
-    if (selectedItems.length < 2) return;
+    if (stackProductCount < 1) return;
     setStackGenerating(true);
 
     const bareCache = { get: getBareCache, set: setBareCache };
     const effectiveMannequin = stackMannequinImage || mannequinImage;
-    const products = await buildStackProducts(selectedItems);
+    const products = await getStackProducts();
 
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
@@ -419,21 +454,17 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const handleSelectStackFavorite = (index: number) => {
     const image = stackResults[index];
     if (!image || image === 'ERROR') return;
-    const selectedItems = queue.filter(i => stackSelection.has(i.id));
     const stackedItem: ProductionItem = {
         id: crypto.randomUUID(),
-        sku: `STACK-${selectedItems.map(i => i.sku).join('+')}`,
-        name: `Stacked: ${selectedItems.map(i => i.name).join(' + ')}`,
-        imageUrl: selectedItems[0].imageUrl,
+        sku: `STACK-${stackJewelry.map(j => j.name).join('+')}`,
+        name: `Stacked: ${stackJewelry.map(j => j.name).join(' + ')}`,
+        imageUrl: stackJewelry[0]?.base64 || '',
         category: 'stacked',
         status: 'COMPLETED',
         resultImage: image,
     };
     setQueue(prev => [...prev, stackedItem]);
     setSelectedItemId(stackedItem.id);
-    setStackSelection(new Set());
-    setStackingMode(false);
-    setStackResults([]);
   };
 
   const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
@@ -560,45 +591,72 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             DOWNLOAD 4K ({selectedForDownload.size})
                         </button>
                     )}
-                    <button onClick={() => { setStackingMode(!stackingMode); setStackSelection(new Set()); setStackResults([]); }} className={`text-[10px] px-3 py-1 rounded border transition-colors font-bold ${stackingMode ? 'bg-purple-50 border-purple-400 text-purple-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <button onClick={() => { setStackingMode(!stackingMode); setStackSelection(new Set()); setStackResults([]); setStackJewelry([]); setStackMannequinImage(null); }} className={`text-[10px] px-3 py-1 rounded border transition-colors font-bold ${stackingMode ? 'bg-purple-50 border-purple-400 text-purple-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                         {stackingMode ? 'Exit Stack' : 'Stack Mode'}
                     </button>
                 </div>
             </div>
 
             {stackingMode && (
-                <div className="px-3 py-2 border-b border-gray-200 bg-purple-50/50 flex items-center gap-4 flex-wrap">
-                    {/* Upload Pose */}
-                    <div className="flex items-center gap-2">
-                        <span className="text-[9px] uppercase font-bold text-purple-600">Pose</span>
-                        {stackMannequinImage ? (
-                            <div className="flex items-center gap-1">
-                                <img src={stackMannequinImage} className="w-8 h-8 rounded object-cover border border-purple-300" />
-                                <button onClick={() => setStackMannequinImage(null)} className="w-4 h-4 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center text-[10px] font-bold">&times;</button>
+                <div className="px-3 py-2 border-b border-gray-200 bg-purple-50/50 space-y-2">
+                    <div className="flex items-center gap-4 flex-wrap">
+                        {/* Upload Base Photo */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] uppercase font-bold text-purple-600">Photo Base</span>
+                            {stackMannequinImage ? (
+                                <div className="flex items-center gap-1">
+                                    <img src={stackMannequinImage} className="w-8 h-8 rounded object-cover border border-purple-300" />
+                                    <button onClick={() => setStackMannequinImage(null)} className="w-4 h-4 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center text-[10px] font-bold">&times;</button>
+                                </div>
+                            ) : (
+                                <button onClick={() => stackFileRef.current?.click()} className="text-[9px] px-2 py-1 rounded border border-purple-300 bg-white text-purple-600 hover:bg-purple-50 font-bold transition-colors">
+                                    Upload
+                                </button>
+                            )}
+                        </div>
+                        {/* Attempts */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] uppercase font-bold text-purple-600">Essais</span>
+                            {[1, 2, 3, 4, 6].map(n => (
+                                <button key={n} onClick={() => setStackAttempts(n)} className={`text-[9px] w-6 h-6 rounded font-bold transition-colors ${stackAttempts === n ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
+                                    {n}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Ratio */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] uppercase font-bold text-purple-600">Ratio</span>
+                            {['1:1', '3:4', '4:3', '9:16', '16:9'].map(r => (
+                                <button key={r} onClick={() => setStackRatio(r)} className={`text-[9px] px-2 py-1 rounded font-bold transition-colors ${stackRatio === r ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
+                                    {r}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {/* Jewelry Upload Row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[9px] uppercase font-bold text-purple-600">Bijoux</span>
+                        {stackJewelry.map(j => (
+                            <div key={j.id} className="flex items-center gap-1 bg-white rounded border border-purple-200 px-1 py-0.5">
+                                <img src={j.base64} className="w-7 h-7 rounded object-cover" />
+                                <select
+                                    className="text-[8px] bg-transparent outline-none text-gray-600 font-bold"
+                                    value={j.category}
+                                    onChange={(e) => setStackJewelry(prev => prev.map(x => x.id === j.id ? { ...x, category: e.target.value } : x))}
+                                >
+                                    <option value="necklace">Collier</option>
+                                    <option value="sautoir-court">Sautoir Court</option>
+                                    <option value="sautoir-long">Sautoir Long</option>
+                                    <option value="earrings">Boucles</option>
+                                    <option value="ring">Bague</option>
+                                    <option value="bracelet">Bracelet</option>
+                                </select>
+                                <button onClick={() => setStackJewelry(prev => prev.filter(x => x.id !== j.id))} className="w-3.5 h-3.5 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center text-[8px] font-bold">&times;</button>
                             </div>
-                        ) : (
-                            <button onClick={() => stackFileRef.current?.click()} className="text-[9px] px-2 py-1 rounded border border-purple-300 bg-white text-purple-600 hover:bg-purple-50 font-bold transition-colors">
-                                Upload
-                            </button>
-                        )}
-                    </div>
-                    {/* Attempts */}
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] uppercase font-bold text-purple-600">Essais</span>
-                        {[1, 2, 3, 4, 6].map(n => (
-                            <button key={n} onClick={() => setStackAttempts(n)} className={`text-[9px] w-6 h-6 rounded font-bold transition-colors ${stackAttempts === n ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
-                                {n}
-                            </button>
                         ))}
-                    </div>
-                    {/* Ratio */}
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] uppercase font-bold text-purple-600">Ratio</span>
-                        {['1:1', '3:4', '4:3', '9:16', '16:9'].map(r => (
-                            <button key={r} onClick={() => setStackRatio(r)} className={`text-[9px] px-2 py-1 rounded font-bold transition-colors ${stackRatio === r ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-300'}`}>
-                                {r}
-                            </button>
-                        ))}
+                        <button onClick={() => stackJewelryRef.current?.click()} className="text-[9px] px-2 py-1 rounded border border-dashed border-purple-300 bg-white text-purple-600 hover:bg-purple-50 font-bold transition-colors">
+                            + Ajouter
+                        </button>
                     </div>
                 </div>
             )}
@@ -688,7 +746,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 )}
             </div>
              <div className="p-3 bg-white border-t border-gray-200 space-y-2">
-                {stackingMode && stackSelection.size >= 2 && (
+                {stackingMode && stackProductCount >= 1 && (
                     <button
                         onClick={handleGenerateStacked}
                         disabled={isStacking || stackGenerating}
@@ -702,7 +760,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         ) : (
                             <>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                Stack {stackSelection.size} Items — {stackAttempts} essai{stackAttempts > 1 ? 's' : ''} {stackRatio}
+                                Stack {stackProductCount} bijou{stackProductCount > 1 ? 'x' : ''} — {stackAttempts} essai{stackAttempts > 1 ? 's' : ''} {stackRatio}
                             </>
                         )}
                     </button>
@@ -724,6 +782,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm flex-1 flex flex-col relative overflow-hidden">
              <input type="file" ref={baseImportRef} className="hidden" accept="image/*" onChange={handleBaseImport} />
              <input type="file" ref={stackFileRef} className="hidden" accept="image/*" onChange={handleStackMannequinUpload} />
+             <input type="file" ref={stackJewelryRef} className="hidden" accept="image/*" multiple onChange={handleStackJewelryUpload} />
              <input type="file" ref={refineFileRef} className="hidden" accept="image/*" onChange={(e) => {
                  const file = e.target.files?.[0];
                  if (file) {

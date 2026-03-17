@@ -991,12 +991,23 @@ export const generateStackedProductionPhoto = async (
             return `Product ${i + 1} (image ${imageBase + i}): ${p.category || p.name || 'jewelry'} — ${placement?.[1] || 'worn naturally on the model'}`;
         }).join('\n');
 
-        let prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING — place ALL the following products on the SAME model simultaneously:\n${productDescriptions}\n\n`;
+        let prompt: string;
 
         if (mannequinBase64) {
-            prompt += `TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION: You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in the reference (image 1). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in the reference photo. Same individual, different jewelry. `;
+            prompt = `IMAGE EDITING TASK — JEWELRY OVERLAY ON EXISTING PHOTO.
+
+You are given an ORIGINAL PHOTO (image 1) of a model. Your job is to ADD the following jewelry pieces onto this EXACT photo:
+${productDescriptions}
+
+ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
+- The background, clothing, pose, lighting, skin, hair, makeup must remain PIXEL-PERFECT IDENTICAL to the original photo.
+- Do NOT regenerate or reconstruct the person. EDIT the existing photo by overlaying jewelry.
+- The ONLY change allowed is adding the jewelry pieces onto the model's body.
+- The result must look like someone Photoshopped the jewelry onto the original photo.
+
+`;
         } else {
-            prompt += `MANNEQUIN: Professional fashion model. `;
+            prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING — place ALL the following products on the SAME model simultaneously:\n${productDescriptions}\n\nMANNEQUIN: Professional fashion model. `;
         }
         prompt += `CRITICAL STACKING RULES:
 - Each jewelry piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together.
@@ -1041,10 +1052,15 @@ export const generateStackedProductionPhoto = async (
             });
         }
 
-        // Fetch and attach all product images
+        // Fetch and attach all product images (handle both URLs and data URIs)
         const productBase64Map: Array<{ base64: string; dataUri: string }> = [];
         for (const product of products) {
-            const productBase64 = await fetchImageAsBase64(product.imageUrl);
+            let productBase64: string;
+            if (product.imageUrl.startsWith('data:')) {
+                productBase64 = product.imageUrl.split(',')[1];
+            } else {
+                productBase64 = await fetchImageAsBase64(product.imageUrl);
+            }
             productBase64Map.push({ base64: productBase64, dataUri: `data:image/jpeg;base64,${productBase64}` });
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
         }
