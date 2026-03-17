@@ -348,49 +348,103 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
   const handleGenerateStacked = async () => {
     const selectedItems = queue.filter(i => stackSelection.has(i.id));
     if (selectedItems.length < 2) return;
+    setStackGenerating(true);
     setIsStacking(true);
+    setStackResults(new Array(stackAttempts).fill(null));
+
     const bareCache = { get: getBareCache, set: setBareCache };
-    try {
-      // Pre-analyze each product for fidelity (only if blueprint enabled)
-      const products = await Promise.all(selectedItems.map(async (item) => {
+    const effectiveMannequin = stackMannequinImage || mannequinImage;
+
+    // Pre-analyze products
+    const products = await Promise.all(selectedItems.map(async (item) => {
         let blueprint: JewelryBlueprint | undefined;
         if (blueprintEnabled) {
-          try {
-            blueprint = await analyzeJewelryProduct(item.imageUrl);
-          } catch { /* proceed without */ }
+            try { blueprint = await analyzeJewelryProduct(item.imageUrl); } catch { /* proceed without */ }
         }
         return {
-          imageUrl: item.imageUrl,
-          category: item.category || '',
-          name: item.name,
-          blueprint,
-          dimensions: (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
-            ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
-            : undefined,
+            imageUrl: item.imageUrl,
+            category: item.category || '',
+            name: item.name,
+            blueprint,
+            dimensions: (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
+                ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
+                : undefined,
         };
-      }));
+    }));
 
-      let effectivePrompt = artisticDirection;
-      if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
-      const resultImage = await generateStackedProductionPhoto(mannequinImage, products, effectivePrompt, bareCache);
-      const stackedItem: ProductionItem = {
+    let effectivePrompt = artisticDirection;
+    if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
+
+    // Generate N attempts sequentially
+    for (let i = 0; i < stackAttempts; i++) {
+        try {
+            const resultImage = await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
+            setStackResults(prev => { const next = [...prev]; next[i] = resultImage; return next; });
+        } catch (err: any) {
+            console.error(`[STACK] Attempt ${i + 1} failed:`, err.message);
+        }
+    }
+
+    setStackGenerating(false);
+    setIsStacking(false);
+  };
+
+  const handleRetryStackVariant = async (index: number) => {
+    const selectedItems = queue.filter(i => stackSelection.has(i.id));
+    if (selectedItems.length < 2) return;
+    setStackGenerating(true);
+
+    const bareCache = { get: getBareCache, set: setBareCache };
+    const effectiveMannequin = stackMannequinImage || mannequinImage;
+
+    const products = await Promise.all(selectedItems.map(async (item) => {
+        let blueprint: JewelryBlueprint | undefined;
+        if (blueprintEnabled) {
+            try { blueprint = await analyzeJewelryProduct(item.imageUrl); } catch { /* proceed without */ }
+        }
+        return {
+            imageUrl: item.imageUrl,
+            category: item.category || '',
+            name: item.name,
+            blueprint,
+            dimensions: (item.chainLength || item.pendantSize || item.pendantHeight || item.pendantWidth)
+                ? { chainLength: item.chainLength, pendantSize: item.pendantSize, pendantHeight: item.pendantHeight, pendantWidth: item.pendantWidth }
+                : undefined,
+        };
+    }));
+
+    let effectivePrompt = artisticDirection;
+    if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
+
+    try {
+        setStackResults(prev => { const next = [...prev]; next[index] = null; return next; });
+        const resultImage = await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
+        setStackResults(prev => { const next = [...prev]; next[index] = resultImage; return next; });
+    } catch (err: any) {
+        console.error(`[STACK] Retry ${index} failed:`, err.message);
+    }
+
+    setStackGenerating(false);
+  };
+
+  const handleSelectStackFavorite = (index: number) => {
+    const image = stackResults[index];
+    if (!image) return;
+    const selectedItems = queue.filter(i => stackSelection.has(i.id));
+    const stackedItem: ProductionItem = {
         id: crypto.randomUUID(),
         sku: `STACK-${selectedItems.map(i => i.sku).join('+')}`,
         name: `Stacked: ${selectedItems.map(i => i.name).join(' + ')}`,
         imageUrl: selectedItems[0].imageUrl,
         category: 'stacked',
         status: 'COMPLETED',
-        resultImage,
-      };
-      setQueue(prev => [...prev, stackedItem]);
-      setSelectedItemId(stackedItem.id);
-      setStackSelection(new Set());
-      setStackingMode(false);
-    } catch (err: any) {
-      alert(`Stacking failed: ${err.message}`);
-    } finally {
-      setIsStacking(false);
-    }
+        resultImage: image,
+    };
+    setQueue(prev => [...prev, stackedItem]);
+    setSelectedItemId(stackedItem.id);
+    setStackSelection(new Set());
+    setStackingMode(false);
+    setStackResults([]);
   };
 
   const selectedItem = queue.find(i => i.id === selectedItemId) || queue[0];
@@ -517,7 +571,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                             DOWNLOAD 4K ({selectedForDownload.size})
                         </button>
                     )}
-                    <button onClick={() => { setStackingMode(!stackingMode); setStackSelection(new Set()); }} className={`text-[10px] px-3 py-1 rounded border transition-colors font-bold ${stackingMode ? 'bg-purple-50 border-purple-400 text-purple-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    <button onClick={() => { setStackingMode(!stackingMode); setStackSelection(new Set()); setStackResults([]); }} className={`text-[10px] px-3 py-1 rounded border transition-colors font-bold ${stackingMode ? 'bg-purple-50 border-purple-400 text-purple-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                         {stackingMode ? 'Exit Stack' : 'Stack Mode'}
                     </button>
                 </div>
@@ -648,7 +702,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 {stackingMode && stackSelection.size >= 2 && (
                     <button
                         onClick={handleGenerateStacked}
-                        disabled={isStacking}
+                        disabled={isStacking || stackGenerating}
                         className="w-full h-10 text-sm tracking-widest uppercase font-bold bg-purple-600 hover:bg-purple-500 text-white rounded-lg disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
                     >
                         {isStacking ? (
@@ -659,7 +713,7 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                         ) : (
                             <>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                                Stack {stackSelection.size} Items
+                                Stack {stackSelection.size} Items — {stackAttempts} essai{stackAttempts > 1 ? 's' : ''} {stackRatio}
                             </>
                         )}
                     </button>
@@ -699,7 +753,57 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                 )}
              </div>
              <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden min-h-0">
-                {activeImage ? (
+                {stackResults.length > 0 ? (
+                    <div className={`w-full h-full p-3 grid gap-2 overflow-y-auto ${
+                        stackResults.length === 1 ? 'grid-cols-1' :
+                        stackResults.length === 2 ? 'grid-cols-2' :
+                        stackResults.length <= 4 ? 'grid-cols-2' :
+                        'grid-cols-3'
+                    }`}>
+                        {stackResults.map((result, idx) => (
+                            <div key={idx} className="relative bg-white rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center group">
+                                {result ? (
+                                    <>
+                                        <img src={result} className="w-full h-full object-contain" />
+                                        <div className="absolute top-1.5 left-1.5 bg-purple-600 text-white text-[8px] font-bold w-5 h-5 rounded-full flex items-center justify-center">#{idx + 1}</div>
+                                        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => handleRetryStackVariant(idx)}
+                                                disabled={stackGenerating}
+                                                className="w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center disabled:opacity-40"
+                                                title="Retry"
+                                            >
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const base64 = result.includes('base64,') ? result : `data:image/png;base64,${result}`;
+                                                    downloadBase64Image(base64, `stack_v${idx + 1}.png`);
+                                                }}
+                                                className="w-6 h-6 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center"
+                                                title="Download"
+                                            >
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => handleSelectStackFavorite(idx)}
+                                                className="w-6 h-6 rounded-full bg-purple-500 hover:bg-purple-600 text-white flex items-center justify-center"
+                                                title="Use this"
+                                            >
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center gap-2">
+                                        <div className="w-6 h-6 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+                                        <span className="text-[9px] text-purple-500 font-bold">#{idx + 1}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                ) : activeImage ? (
                     <div className="relative w-full h-full">
                         <img src={activeImage} className="w-full h-full object-contain shadow-2xl" />
                         {variantCount > 1 && (
@@ -725,6 +829,38 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
                     </div>
                 ) : <p className="text-xs text-gray-400 uppercase tracking-widest">No Selection</p>}
              </div>
+             {stackResults.length > 0 && stackResults.some(r => r !== null) && (
+                <div className="border-t border-gray-200 bg-white flex-shrink-0">
+                    <div className="h-14 flex items-center justify-between px-4">
+                        <span className="text-[9px] font-mono text-purple-500 font-bold">
+                            {stackResults.filter(r => r !== null).length}/{stackResults.length} generated
+                            {stackGenerating && ' — generating...'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    stackResults.forEach((r, i) => {
+                                        if (r) {
+                                            const base64 = r.includes('base64,') ? r : `data:image/png;base64,${r}`;
+                                            downloadBase64Image(base64, `stack_v${i + 1}.png`);
+                                        }
+                                    });
+                                }}
+                                className="text-[10px] h-8 px-3 bg-purple-600 text-white rounded font-bold hover:bg-purple-500 transition-colors flex items-center gap-1"
+                            >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                DOWNLOAD ALL ({stackResults.filter(r => r !== null).length})
+                            </button>
+                            <button
+                                onClick={() => { setStackResults([]); }}
+                                className="text-[10px] h-8 px-3 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200 transition-colors border border-gray-200"
+                            >
+                                CLEAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+             )}
              {activeImage && (
                 <div className="border-t border-gray-200 bg-white flex-shrink-0">
                     <div className="h-14 flex items-center justify-between px-4">
