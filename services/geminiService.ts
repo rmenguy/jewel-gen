@@ -966,7 +966,8 @@ export const generateStackedProductionPhoto = async (
     mannequinBase64: string | null,
     products: Array<{ imageUrl: string; category: string; name: string; blueprint?: JewelryBlueprint; dimensions?: ProductDimensions }>,
     artisticDirection: string,
-    bareCache?: { get: (key: string) => string | undefined; set: (key: string, img: string) => void }
+    bareCache?: { get: (key: string) => string | undefined; set: (key: string, img: string) => void },
+    aspectRatio?: string
 ): Promise<string> => {
     console.log(`[STACK] Starting stacked production — ${products.length} products (single-pass)`);
     return withRetry(async () => {
@@ -1055,6 +1056,7 @@ export const generateStackedProductionPhoto = async (
                 responseModalities: ['IMAGE', 'TEXT'],
                 imageConfig: {
                     imageSize: '4K',
+                    ...(aspectRatio && { aspectRatio }),
                 },
             }
         });
