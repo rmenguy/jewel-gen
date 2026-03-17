@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useBannerStore } from '../stores/useBannerStore';
-import { generateBannerMannequin, addSingleJewelryToBanner, refuseBannerIdentity, freeformEditImage } from '../services/geminiService';
+import { generateBannerMannequin, addSingleJewelryToBanner, refuseBannerIdentity, freeformEditImage, analyzeJewelryProduct } from '../services/geminiService';
 import { downloadBase64Image } from '../services/downloadService';
 import { BannerJewelry } from '../types';
 
@@ -68,11 +68,17 @@ export default function BannerEngine() {
     if (!file) return;
     const base64 = await readFileAsBase64(file);
     const name = file.name.replace(/\.[^.]+$/, '');
-    const item: BannerJewelry = { id: crypto.randomUUID(), name, imageBase64: base64, placed: false };
+    const item: BannerJewelry = { id: crypto.randomUUID(), name, imageBase64: base64, placed: false, isAnalyzing: true };
     store.addJewelry(item);
     setEditingNameId(item.id);
     setEditingNameValue(name);
     e.target.value = '';
+    // Auto-analyze jewelry in background
+    analyzeJewelryProduct(base64).then((blueprint) => {
+      store.setJewelryBlueprint(item.id, blueprint);
+    }).catch(() => {
+      store.setJewelryAnalyzing(item.id, false);
+    });
   };
 
   const handleSaveName = (id: string) => {
@@ -405,7 +411,7 @@ export default function BannerEngine() {
                         </div>
                       )}
                       <div className={`text-[10px] ${jewelry.placed ? 'text-green-600 font-semibold' : 'text-gray-400'}`}>
-                        {jewelry.placed ? '✓ Placé' : 'En attente'}
+                        {jewelry.placed ? '✓ Placé' : jewelry.isAnalyzing ? 'Analyse...' : jewelry.blueprint ? 'Prêt' : 'En attente'}
                       </div>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); store.removeJewelry(jewelry.id); }}

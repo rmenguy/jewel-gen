@@ -198,4 +198,6 @@ export interface BannerJewelry {
   chainLength?: number;     // cm
   pendantHeight?: number;   // cm
   pendantWidth?: number;    // cm
+  blueprint?: JewelryBlueprint;
+  isAnalyzing?: boolean;
 }

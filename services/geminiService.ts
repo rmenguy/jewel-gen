@@ -2028,7 +2028,17 @@ TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION:
 The model in the output MUST remain 100% IDENTICAL to the person in image 1 (and the identity references). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, brow ridge. (2) Ocular Detail — replicate eye shape, iris color, eyelid fold. (3) Identity Marks — retain wrinkles, pores, moles, hairline. The subject must be recognizable as the SAME INDIVIDUAL.
 
 PLACEMENT: ${placementPrompt}
-
+${jewelry.blueprint ? `
+PRODUCT BLUEPRINT (REPRODUCE THIS EXACTLY):
+Material: ${jewelry.blueprint.material}.
+Chain: ${jewelry.blueprint.chainType}.
+${jewelry.blueprint.stoneShape !== 'none' ? `Stones: ${jewelry.blueprint.stoneShape}, set in ${jewelry.blueprint.stoneSetting}.` : ''}
+${jewelry.blueprint.pendantShape !== 'none' ? `Pendant: ${jewelry.blueprint.pendantShape}.` : ''}
+Finish: ${jewelry.blueprint.finish}.
+Colors: ${jewelry.blueprint.colorDetails}.
+CRITICAL FIDELITY: ${jewelry.blueprint.rawDescription}
+The jewelry in the output MUST match the product reference image EXACTLY — same chain type, same stone shapes, same proportions. Do NOT approximate or substitute any element.
+` : ''}
 CRITICAL RULES:
 - Add ONLY this ONE jewelry piece ("${jewelry.name}") at the specified location
 - Do NOT remove, move, or modify any jewelry already present in image 1

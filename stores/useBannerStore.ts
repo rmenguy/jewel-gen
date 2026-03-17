@@ -54,6 +54,8 @@ interface BannerStore {
   removeJewelry: (id: string) => void;
   updateJewelryName: (id: string, name: string) => void;
   updateJewelryDimensions: (id: string, dims: { chainLength?: number; pendantHeight?: number; pendantWidth?: number }) => void;
+  setJewelryBlueprint: (id: string, blueprint: any) => void;
+  setJewelryAnalyzing: (id: string, v: boolean) => void;
   setSelectedJewelryId: (id: string | null) => void;
   setCurrentPlacementPrompt: (text: string) => void;
   markJewelryPlaced: (id: string) => void;
@@ -133,6 +135,12 @@ export const useBannerStore = create<BannerStore>((set) => ({
   })),
   updateJewelryDimensions: (id, dims) => set((s) => ({
     jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, ...dims } : j),
+  })),
+  setJewelryBlueprint: (id, blueprint) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, blueprint, isAnalyzing: false } : j),
+  })),
+  setJewelryAnalyzing: (id, v) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, isAnalyzing: v } : j),
   })),
   setSelectedJewelryId: (id) => set({ selectedJewelryId: id, currentPlacementPrompt: '' }),
   setCurrentPlacementPrompt: (text) => set({ currentPlacementPrompt: text }),
