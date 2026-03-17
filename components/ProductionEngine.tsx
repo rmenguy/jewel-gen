@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { downloadBase64Image } from '../services/downloadService';
 import { ProductionItem, ExtractionLevel, CustomPreset, JewelryBlueprint, ProductDimensions, PoseKey } from '../types';
-import { generateProductionPhoto, generateStackedProductionPhoto, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting, freeformEditImage } from '../services/geminiService';
+import { generateProductionPhoto, generateStackedProductionPhoto, generateStackedIterative, analyzeProductionReference, analyzeJewelryProduct, generateBareMannequin, dressWithJewelry, segmentJewelry, addJewelryToExisting, freeformEditImage } from '../services/geminiService';
 import { useProductionStore } from '../stores/useProductionStore';
 import { Button } from './Button';
 
@@ -413,10 +413,16 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
 
+    // Use iterative pipeline (addJewelryToExisting per piece) when base photo is provided
+    // This preserves exact jewelry pixels through canvas compositing
+    const useIterative = !!stackMannequinImage;
+
     // Generate N attempts sequentially
     for (let i = 0; i < stackAttempts; i++) {
         try {
-            const resultImage = await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
+            const resultImage = useIterative
+                ? await generateStackedIterative(effectiveMannequin!, products)
+                : await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
             setStackResults(prev => { const next = [...prev]; next[i] = resultImage; return next; });
         } catch (err: any) {
             console.error(`[STACK] Attempt ${i + 1} failed:`, err.message);
@@ -439,9 +445,13 @@ export const ProductionEngine: React.FC<ProductionEngineProps> = ({
     let effectivePrompt = artisticDirection;
     if (!effectivePrompt.trim()) effectivePrompt = PROMPT_PRESETS.default;
 
+    const useIterative = !!stackMannequinImage;
+
     try {
         setStackResults(prev => { const next = [...prev]; next[index] = null; return next; });
-        const resultImage = await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
+        const resultImage = useIterative
+            ? await generateStackedIterative(effectiveMannequin!, products)
+            : await generateStackedProductionPhoto(effectiveMannequin, products, effectivePrompt, bareCache, stackRatio);
         setStackResults(prev => { const next = [...prev]; next[index] = resultImage; return next; });
     } catch (err: any) {
         console.error(`[STACK] Retry ${index} failed:`, err.message);

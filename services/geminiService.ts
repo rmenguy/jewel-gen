@@ -960,7 +960,46 @@ export const addJewelryToExisting = async (
 };
 
 /**
+ * Iterative stacking: adds jewelry pieces one-by-one onto a base photo using
+ * the addJewelryToExisting pipeline (dress → segment → composite → harmonize → pixel validation).
+ * This preserves the exact pixels of each jewelry piece through canvas compositing.
+ */
+export const generateStackedIterative = async (
+    baseImage: string,
+    products: Array<{ imageUrl: string; category: string; name: string; blueprint?: JewelryBlueprint; dimensions?: ProductDimensions }>,
+): Promise<string> => {
+    console.log(`[STACK-ITERATIVE] Starting iterative stacking — ${products.length} products`);
+    let currentImage = baseImage;
+
+    for (let i = 0; i < products.length; i++) {
+        const product = products[i];
+        console.log(`[STACK-ITERATIVE] Adding product ${i + 1}/${products.length}: ${product.name} (${product.category})`);
+
+        // Get product base64 — handle both data URIs and URLs
+        let productBase64: string;
+        if (product.imageUrl.startsWith('data:')) {
+            productBase64 = product.imageUrl;
+        } else {
+            const raw = await fetchImageAsBase64(product.imageUrl);
+            productBase64 = `data:image/jpeg;base64,${raw}`;
+        }
+
+        currentImage = await addJewelryToExisting(
+            currentImage,
+            productBase64,
+            product.category,
+            product.blueprint,
+            product.dimensions,
+        );
+        console.log(`[STACK-ITERATIVE] Product ${i + 1} added successfully`);
+    }
+
+    return currentImage;
+};
+
+/**
  * Generate a production photo with multiple jewelry pieces stacked on the same mannequin.
+ * Single-pass approach (used when no base photo is provided).
  */
 export const generateStackedProductionPhoto = async (
     mannequinBase64: string | null,
