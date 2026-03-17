@@ -387,26 +387,43 @@ export default function BannerEngine() {
 
           <div className="flex flex-col gap-2">
             {store.jewelryItems.map((jewelry) => (
-              <div key={jewelry.id} className="flex gap-2 items-center p-2 rounded-lg border border-gray-200 bg-gray-50">
-                <img src={jewelry.imageBase64} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
-                <div className="min-w-0 flex-1">
-                  {editingNameId === jewelry.id ? (
-                    <input type="text" value={editingNameValue}
-                      onChange={(e) => setEditingNameValue(e.target.value)}
-                      onBlur={() => handleSaveName(jewelry.id)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveName(jewelry.id)}
-                      className="w-full text-xs font-semibold border border-indigo-400 rounded px-1 py-0.5 focus:outline-none"
-                      autoFocus />
-                  ) : (
-                    <div className="text-xs font-semibold text-gray-700 truncate cursor-pointer hover:text-indigo-500"
-                      onClick={() => { setEditingNameId(jewelry.id); setEditingNameValue(jewelry.name); }}
-                      title="Cliquer pour renommer">
-                      {jewelry.name}
-                    </div>
-                  )}
+              <div key={jewelry.id} className="p-2 rounded-lg border border-gray-200 bg-gray-50">
+                <div className="flex gap-2 items-center">
+                  <img src={jewelry.imageBase64} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    {editingNameId === jewelry.id ? (
+                      <input type="text" value={editingNameValue}
+                        onChange={(e) => setEditingNameValue(e.target.value)}
+                        onBlur={() => handleSaveName(jewelry.id)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveName(jewelry.id)}
+                        className="w-full text-xs font-semibold border border-indigo-400 rounded px-1 py-0.5 focus:outline-none"
+                        autoFocus />
+                    ) : (
+                      <div className="text-xs font-semibold text-gray-700 truncate cursor-pointer hover:text-indigo-500"
+                        onClick={() => { setEditingNameId(jewelry.id); setEditingNameValue(jewelry.name); }}
+                        title="Cliquer pour renommer">
+                        {jewelry.name}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => store.removeJewelry(jewelry.id)}
+                    className="w-5 h-5 rounded-full bg-red-100 text-red-500 text-[10px] flex items-center justify-center hover:bg-red-200 flex-shrink-0">✕</button>
                 </div>
-                <button onClick={() => store.removeJewelry(jewelry.id)}
-                  className="w-5 h-5 rounded-full bg-red-100 text-red-500 text-[10px] flex items-center justify-center hover:bg-red-200 flex-shrink-0">✕</button>
+                {/* Dimensions */}
+                <div className="flex gap-1 mt-1.5">
+                  <input type="number" placeholder="Chaîne cm"
+                    value={jewelry.chainLength || ''}
+                    onChange={(e) => store.updateJewelryDimensions(jewelry.id, { chainLength: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-1/3 text-[10px] border border-gray-300 rounded px-1 py-0.5 focus:border-indigo-400 focus:outline-none" />
+                  <input type="number" placeholder="Pend. H cm"
+                    value={jewelry.pendantHeight || ''}
+                    onChange={(e) => store.updateJewelryDimensions(jewelry.id, { pendantHeight: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-1/3 text-[10px] border border-gray-300 rounded px-1 py-0.5 focus:border-indigo-400 focus:outline-none" />
+                  <input type="number" placeholder="Pend. L cm"
+                    value={jewelry.pendantWidth || ''}
+                    onChange={(e) => store.updateJewelryDimensions(jewelry.id, { pendantWidth: e.target.value ? Number(e.target.value) : undefined })}
+                    className="w-1/3 text-[10px] border border-gray-300 rounded px-1 py-0.5 focus:border-indigo-400 focus:outline-none" />
+                </div>
               </div>
             ))}
           </div>

@@ -49,6 +49,7 @@ interface BannerStore {
   addJewelry: (item: BannerJewelry) => void;
   removeJewelry: (id: string) => void;
   updateJewelryName: (id: string, name: string) => void;
+  updateJewelryDimensions: (id: string, dims: { chainLength?: number; pendantHeight?: number; pendantWidth?: number }) => void;
   setPlacementPrompt: (text: string) => void;
   setBannerImage: (base64: string | null) => void;
   setIsGeneratingBanner: (v: boolean) => void;
@@ -108,6 +109,9 @@ export const useBannerStore = create<BannerStore>((set) => ({
   })),
   updateJewelryName: (id, name) => set((s) => ({
     jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, name } : j),
+  })),
+  updateJewelryDimensions: (id, dims) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, ...dims } : j),
   })),
   setPlacementPrompt: (text) => set({ placementPrompt: text }),
 

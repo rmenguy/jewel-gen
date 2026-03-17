@@ -2012,10 +2012,23 @@ export async function generateBannerWithJewelry(
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
-  // Build image index for the prompt
-  const imageIndex = jewelryItems.map((j, i) =>
-    `- Image ${i + 2}: "${j.name}"`
-  ).join('\n');
+  // Build image index with dimension anchors for each piece
+  const imageIndex = jewelryItems.map((j, i) => {
+    let line = `- Image ${i + 2}: "${j.name}"`;
+    const dims = buildDimensionAnchors(
+      { chainLength: j.chainLength, pendantHeight: j.pendantHeight, pendantWidth: j.pendantWidth },
+      j.name
+    );
+    if (dims) line += `\n  ${dims.replace(/\n/g, '\n  ')}`;
+    return line;
+  }).join('\n');
+
+  // Build relative proportions if multiple pieces have chain lengths
+  const stackAnchors = buildStackingDimensionAnchors(
+    jewelryItems
+      .filter(j => j.chainLength)
+      .map(j => ({ category: j.name, dimensions: { chainLength: j.chainLength } }))
+  );
 
   const prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING on a banner photo.
 
@@ -2028,7 +2041,7 @@ You are a high-end Digital Double specialist. Reconstruct the EXACT physical ide
 
 JEWELRY PLACEMENT INSTRUCTIONS:
 ${placementPrompt}
-
+${stackAnchors ? `\n${stackAnchors}\n` : ''}
 CRITICAL STACKING RULES:
 - Each jewelry piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together.
 - Each piece hangs at its own LENGTH with natural gravity — chains drape freely, pendants swing with weight, nothing fused to skin or other pieces.
