@@ -1987,75 +1987,58 @@ OUTPUT FORMAT: WIDE LANDSCAPE 16:9 banner format. This is a website hero banner 
 }
 
 /**
- * Generate the final banner with jewelry placed on the mannequin.
- * Uses a freeform placement prompt where the user describes where each named piece goes.
- * Each jewelry image is sent alongside the mannequin image.
+ * Add a SINGLE jewelry piece to the current working banner image.
+ * Iterative approach: one piece at a time for better control.
  */
-export async function generateBannerWithJewelry(
-  mannequinImage: string,
-  jewelryItems: BannerJewelry[],
+export async function addSingleJewelryToBanner(
+  workingImage: string,
+  jewelry: BannerJewelry,
   placementPrompt: string,
+  identityPhotos: string[],
 ): Promise<string> {
-  if (jewelryItems.length === 0) {
-    throw new Error('At least one jewelry item is required');
-  }
-
   const parts: any[] = [];
 
-  // Image 1: mannequin base
-  const mannequinRaw = mannequinImage.includes('base64,') ? mannequinImage.split(',')[1] : mannequinImage;
-  parts.push({ inlineData: { mimeType: 'image/png', data: mannequinRaw } });
+  // Image 1: current working image (mannequin + any previously placed jewelry)
+  const workingRaw = workingImage.includes('base64,') ? workingImage.split(',')[1] : workingImage;
+  parts.push({ inlineData: { mimeType: 'image/png', data: workingRaw } });
 
-  // Images 2+: each jewelry piece
-  for (const jewelry of jewelryItems) {
-    const raw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
+  // Image 2: the jewelry piece to add
+  const jewelryRaw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
+  parts.push({ inlineData: { mimeType: 'image/jpeg', data: jewelryRaw } });
+
+  // Images 3+: identity photos for reference
+  for (const photo of identityPhotos) {
+    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
   }
 
-  // Build image index with dimension anchors for each piece
-  const imageIndex = jewelryItems.map((j, i) => {
-    let line = `- Image ${i + 2}: "${j.name}"`;
-    const dims = buildDimensionAnchors(
-      { chainLength: j.chainLength, pendantHeight: j.pendantHeight, pendantWidth: j.pendantWidth },
-      j.name
-    );
-    if (dims) line += `\n  ${dims.replace(/\n/g, '\n  ')}`;
-    return line;
-  }).join('\n');
-
-  // Build relative proportions if multiple pieces have chain lengths
-  const stackAnchors = buildStackingDimensionAnchors(
-    jewelryItems
-      .filter(j => j.chainLength)
-      .map(j => ({ category: j.name, dimensions: { chainLength: j.chainLength } }))
+  // Build dimension anchors for this piece
+  const dims = buildDimensionAnchors(
+    { chainLength: jewelry.chainLength, pendantHeight: jewelry.pendantHeight, pendantWidth: jewelry.pendantWidth },
+    jewelry.name
   );
 
-  const prompt = `Luxury commercial photography. 4K RESOLUTION. MULTIPLE JEWELRY STACKING on a banner photo.
+  const prompt = `Luxury commercial photography. 4K RESOLUTION. Add ONE jewelry piece to this banner photo.
 
-IMAGE REFERENCES:
-- Image 1: The model/mannequin — this is the base photo. Preserve this person's identity EXACTLY.
-${imageIndex}
-
+IMAGE 1: The current banner photo (model, possibly with jewelry already placed). This is the base — preserve EVERYTHING.
+IMAGE 2: The jewelry piece to add: "${jewelry.name}"
+${identityPhotos.length > 0 ? `IMAGES 3-${2 + identityPhotos.length}: Identity reference photos of the model — use these to maintain facial accuracy.` : ''}
+${dims ? `\n${dims}\n` : ''}
 TECHNICAL MANDATE — BIOMETRIC RECONSTRUCTION:
-You are a high-end Digital Double specialist. Reconstruct the EXACT physical identity of the subject in image 1. BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry. (2) Ocular Detail — replicate eye shape, iris color intensity, and the specific fold of the eyelids. (3) Identity Marks — retain all defining characteristics: specific wrinkles, skin pores, moles, and authentic hairline. (4) The subject must be 100% recognizable as the INDIVIDUAL in image 1. Same pose, same outfit, same background, same lighting.
+The model in the output MUST remain 100% IDENTICAL to the person in image 1 (and the identity references). BIOMETRIC CONSTRAINTS: (1) Bone Structure — match the precise jawline, cheekbone height, brow ridge. (2) Ocular Detail — replicate eye shape, iris color, eyelid fold. (3) Identity Marks — retain wrinkles, pores, moles, hairline. The subject must be recognizable as the SAME INDIVIDUAL.
 
-JEWELRY PLACEMENT INSTRUCTIONS:
-${placementPrompt}
-${stackAnchors ? `\n${stackAnchors}\n` : ''}
-CRITICAL STACKING RULES:
-- Each jewelry piece has its OWN SEPARATE chain — do NOT merge, fuse, or connect chains together.
-- Each piece hangs at its own LENGTH with natural gravity — chains drape freely, pendants swing with weight, nothing fused to skin or other pieces.
-- Visible GAPS between layered necklaces — shorter pieces higher, longer pieces lower. No overlap or tangle.
-- If multiple earrings: place each at a DIFFERENT position on the SAME ear (lobe, upper lobe, helix, tragus). Each earring clearly distinct.
-- Each piece must be clearly identifiable as a separate item matching its reference image.
+PLACEMENT: ${placementPrompt}
 
-CRITICAL FIDELITY:
-- Each jewelry piece MUST match its reference image EXACTLY — same chain type, same stone shapes, same materials, same proportions. Do NOT approximate or substitute any element.
-- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, light interaction with metal/stones.
+CRITICAL RULES:
+- Add ONLY this ONE jewelry piece ("${jewelry.name}") at the specified location
+- Do NOT remove, move, or modify any jewelry already present in image 1
+- The new piece must match its reference image (image 2) EXACTLY — same chain type, stone shapes, materials, proportions
+- Jewelry must look photorealistic and naturally worn — proper shadows, reflections, natural drape with gravity
+- If adding a necklace where one already exists: layer naturally with visible gap, new piece at its own length
+- Do NOT modify the model's face, pose, outfit, background, or lighting
+- Maintain the banner format and resolution
 
-SCENE PRESERVATION: Do NOT modify the model's face, pose, outfit, background, or lighting. The ONLY change is adding the jewelry.
-
-QUALITY: 8K hyper-realistic rendering, ultra-detailed. Maintain the 16:9 landscape banner format.`;
+QUALITY: 8K hyper-realistic, ultra-detailed.`;
 
   parts.push({ text: prompt });
 
@@ -2069,12 +2052,79 @@ QUALITY: 8K hyper-realistic rendering, ultra-detailed. Maintain the 16:9 landsca
 
   return withRetry(async () => {
     const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
-
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
     }
-    throw new Error('No image in banner jewelry generation response');
+    throw new Error('No image in addSingleJewelryToBanner response');
+  });
+}
+
+/**
+ * Refuse (re-fuse) the model's identity on the current banner.
+ * Used when the mannequin's face/body has drifted after adding jewelry.
+ * Sends identity photos + current image → Gemini fixes the face while keeping jewelry.
+ */
+export async function refuseBannerIdentity(
+  workingImage: string,
+  identityPhotos: string[],
+): Promise<string> {
+  if (identityPhotos.length === 0) {
+    throw new Error('Identity photos required for refusion');
+  }
+
+  const parts: any[] = [];
+
+  // Image 1: current working image (with jewelry but drifted face)
+  const workingRaw = workingImage.includes('base64,') ? workingImage.split(',')[1] : workingImage;
+  parts.push({ inlineData: { mimeType: 'image/png', data: workingRaw } });
+
+  // Images 2+: identity reference photos
+  for (const photo of identityPhotos) {
+    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+  }
+
+  const prompt = `IDENTITY CORRECTION TASK.
+
+IMAGE 1: A banner photo of a model wearing jewelry. The model's face/body has DRIFTED from the original identity — it no longer looks exactly like the real person.
+IMAGES 2-${1 + identityPhotos.length}: Reference photos of the REAL person. These show the correct face, skin tone, and features.
+
+YOUR TASK: Reconstruct the model's face and body to match the identity reference photos EXACTLY.
+
+BIOMETRIC RECONSTRUCTION:
+(1) Bone Structure — match the precise jawline, cheekbone height, and brow ridge geometry from the references
+(2) Ocular Detail — replicate exact eye shape, iris color intensity, eyelid fold
+(3) Identity Marks — retain all defining characteristics: wrinkles, skin pores, moles, hairline
+(4) The output model must be 100% recognizable as the INDIVIDUAL in the reference photos
+
+CRITICAL — PRESERVE EVERYTHING ELSE:
+- Keep ALL jewelry EXACTLY as-is — same pieces, same positions, same appearance
+- Keep the same pose, same body position, same outfit
+- Keep the same background, same lighting, same color temperature
+- Keep the same framing and composition
+- The ONLY change is the model's face and body matching the identity references
+
+QUALITY: 8K hyper-realistic, maintain banner format.`;
+
+  parts.push({ text: prompt });
+
+  const requestBody = {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      imageConfig: { imageSize: '4K' },
+    },
+  };
+
+  return withRetry(async () => {
+    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error('No image in refuseBannerIdentity response');
   });
 }

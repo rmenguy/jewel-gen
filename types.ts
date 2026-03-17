@@ -194,6 +194,7 @@ export interface BannerJewelry {
   id: string;
   name: string;
   imageBase64: string;
+  placed: boolean;
   chainLength?: number;     // cm
   pendantHeight?: number;   // cm
   pendantWidth?: number;    // cm

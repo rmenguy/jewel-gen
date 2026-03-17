@@ -4,8 +4,8 @@ import { BannerJewelry } from '../types';
 const MAX_HISTORY = 10;
 
 interface BannerStore {
-  // Step: 1 = mannequin, 2 = jewelry placement, 3 = refinement
-  currentStep: 1 | 2 | 3;
+  // Step: 1 = mannequin, 2 = iterative jewelry
+  currentStep: 1 | 2;
 
   // Step 1: Inputs
   identityPhotos: string[];
@@ -14,29 +14,29 @@ interface BannerStore {
   outfitPrompt: string;
   ambiancePrompt: string;
   posePrompt: string;
-
-  // Step 1: Output
   mannequinImage: string | null;
   isGeneratingMannequin: boolean;
 
-  // Step 2: Jewelry + placement prompt
+  // Step 2: Iterative jewelry
   jewelryItems: BannerJewelry[];
-  placementPrompt: string;
-  bannerImage: string | null;
-  isGeneratingBanner: boolean;
-
-  // Step 3: Refinement
-  isRepositioning: boolean;
+  selectedJewelryId: string | null;
+  currentPlacementPrompt: string;
+  workingImage: string | null;       // evolves as jewelry is added
+  isAddingJewelry: boolean;
+  isRefusing: boolean;               // refusionner loading
+  isRepositioning: boolean;          // freeform edit loading
 
   // History
   mannequinHistory: string[];
-  bannerHistory: string[];
+  workingHistory: string[];          // undo stack for working image
 
   // Error
   error: string | null;
 
-  // Actions
-  setCurrentStep: (step: 1 | 2 | 3) => void;
+  // Actions — Step
+  setCurrentStep: (step: 1 | 2) => void;
+
+  // Actions — Step 1
   addIdentityPhoto: (base64: string) => void;
   removeIdentityPhoto: (index: number) => void;
   setPoseReference: (base64: string | null) => void;
@@ -46,21 +46,30 @@ interface BannerStore {
   setPosePrompt: (text: string) => void;
   setMannequinImage: (base64: string | null) => void;
   setIsGeneratingMannequin: (v: boolean) => void;
+  pushToMannequinHistory: (base64: string) => void;
+  undoMannequin: () => void;
+
+  // Actions — Step 2
   addJewelry: (item: BannerJewelry) => void;
   removeJewelry: (id: string) => void;
   updateJewelryName: (id: string, name: string) => void;
   updateJewelryDimensions: (id: string, dims: { chainLength?: number; pendantHeight?: number; pendantWidth?: number }) => void;
-  setPlacementPrompt: (text: string) => void;
-  setBannerImage: (base64: string | null) => void;
-  setIsGeneratingBanner: (v: boolean) => void;
+  setSelectedJewelryId: (id: string | null) => void;
+  setCurrentPlacementPrompt: (text: string) => void;
+  markJewelryPlaced: (id: string) => void;
+  markJewelryPending: (id: string) => void;
+  setWorkingImage: (base64: string | null) => void;
+  setIsAddingJewelry: (v: boolean) => void;
+  setIsRefusing: (v: boolean) => void;
   setIsRepositioning: (v: boolean) => void;
-  pushToMannequinHistory: (base64: string) => void;
-  undoMannequin: () => void;
-  pushToBannerHistory: (base64: string) => void;
-  undoBanner: () => void;
+  pushToWorkingHistory: (base64: string) => void;
+  undoWorking: () => void;
+
+  // Actions — General
   setError: (e: string | null) => void;
   resetAll: () => void;
-  goBackToStep: (step: 1 | 2) => void;
+  acceptMannequin: () => void;       // transition step 1 → 2
+  goBackToMannequin: () => void;     // back to step 1
 }
 
 export const useBannerStore = create<BannerStore>((set) => ({
@@ -74,16 +83,19 @@ export const useBannerStore = create<BannerStore>((set) => ({
   mannequinImage: null,
   isGeneratingMannequin: false,
   jewelryItems: [],
-  placementPrompt: '',
-  bannerImage: null,
-  isGeneratingBanner: false,
+  selectedJewelryId: null,
+  currentPlacementPrompt: '',
+  workingImage: null,
+  isAddingJewelry: false,
+  isRefusing: false,
   isRepositioning: false,
   mannequinHistory: [],
-  bannerHistory: [],
+  workingHistory: [],
   error: null,
 
   setCurrentStep: (step) => set({ currentStep: step, error: null }),
 
+  // Step 1
   addIdentityPhoto: (base64) => set((s) => {
     if (s.identityPhotos.length >= 3) return s;
     return { identityPhotos: [...s.identityPhotos, base64] };
@@ -96,30 +108,8 @@ export const useBannerStore = create<BannerStore>((set) => ({
   setOutfitPrompt: (text) => set({ outfitPrompt: text }),
   setAmbiancePrompt: (text) => set({ ambiancePrompt: text }),
   setPosePrompt: (text) => set({ posePrompt: text }),
-
   setMannequinImage: (base64) => set({ mannequinImage: base64 }),
   setIsGeneratingMannequin: (v) => set({ isGeneratingMannequin: v }),
-
-  addJewelry: (item) => set((s) => {
-    if (s.jewelryItems.length >= 8) return s;
-    return { jewelryItems: [...s.jewelryItems, item] };
-  }),
-  removeJewelry: (id) => set((s) => ({
-    jewelryItems: s.jewelryItems.filter((j) => j.id !== id),
-  })),
-  updateJewelryName: (id, name) => set((s) => ({
-    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, name } : j),
-  })),
-  updateJewelryDimensions: (id, dims) => set((s) => ({
-    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, ...dims } : j),
-  })),
-  setPlacementPrompt: (text) => set({ placementPrompt: text }),
-
-  setBannerImage: (base64) => set({ bannerImage: base64 }),
-  setIsGeneratingBanner: (v) => set({ isGeneratingBanner: v }),
-
-  setIsRepositioning: (v) => set({ isRepositioning: v }),
-
   pushToMannequinHistory: (base64) => set((s) => ({
     mannequinHistory: [base64, ...s.mannequinHistory].slice(0, MAX_HISTORY),
   })),
@@ -129,16 +119,60 @@ export const useBannerStore = create<BannerStore>((set) => ({
     return { mannequinImage: restored, mannequinHistory: rest };
   }),
 
-  pushToBannerHistory: (base64) => set((s) => ({
-    bannerHistory: [base64, ...s.bannerHistory].slice(0, MAX_HISTORY),
+  // Step 2
+  addJewelry: (item) => set((s) => {
+    if (s.jewelryItems.length >= 8) return s;
+    return { jewelryItems: [...s.jewelryItems, item] };
+  }),
+  removeJewelry: (id) => set((s) => ({
+    jewelryItems: s.jewelryItems.filter((j) => j.id !== id),
+    selectedJewelryId: s.selectedJewelryId === id ? null : s.selectedJewelryId,
   })),
-  undoBanner: () => set((s) => {
-    if (s.bannerHistory.length === 0) return s;
-    const [restored, ...rest] = s.bannerHistory;
-    return { bannerImage: restored, bannerHistory: rest };
+  updateJewelryName: (id, name) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, name } : j),
+  })),
+  updateJewelryDimensions: (id, dims) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, ...dims } : j),
+  })),
+  setSelectedJewelryId: (id) => set({ selectedJewelryId: id, currentPlacementPrompt: '' }),
+  setCurrentPlacementPrompt: (text) => set({ currentPlacementPrompt: text }),
+  markJewelryPlaced: (id) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, placed: true } : j),
+    selectedJewelryId: null,
+    currentPlacementPrompt: '',
+  })),
+  markJewelryPending: (id) => set((s) => ({
+    jewelryItems: s.jewelryItems.map((j) => j.id === id ? { ...j, placed: false } : j),
+  })),
+  setWorkingImage: (base64) => set({ workingImage: base64 }),
+  setIsAddingJewelry: (v) => set({ isAddingJewelry: v }),
+  setIsRefusing: (v) => set({ isRefusing: v }),
+  setIsRepositioning: (v) => set({ isRepositioning: v }),
+  pushToWorkingHistory: (base64) => set((s) => ({
+    workingHistory: [base64, ...s.workingHistory].slice(0, MAX_HISTORY),
+  })),
+  undoWorking: () => set((s) => {
+    if (s.workingHistory.length === 0) return s;
+    const [restored, ...rest] = s.workingHistory;
+    return { workingImage: restored, workingHistory: rest };
   }),
 
+  // General
   setError: (e) => set({ error: e }),
+  acceptMannequin: () => set((s) => ({
+    currentStep: 2 as const,
+    workingImage: s.mannequinImage,
+    workingHistory: [],
+    error: null,
+  })),
+  goBackToMannequin: () => set({
+    currentStep: 1 as const,
+    workingImage: null,
+    workingHistory: [],
+    selectedJewelryId: null,
+    currentPlacementPrompt: '',
+    error: null,
+  }),
   resetAll: () => set({
     currentStep: 1,
     identityPhotos: [],
@@ -150,29 +184,14 @@ export const useBannerStore = create<BannerStore>((set) => ({
     mannequinImage: null,
     isGeneratingMannequin: false,
     jewelryItems: [],
-    placementPrompt: '',
-    bannerImage: null,
-    isGeneratingBanner: false,
+    selectedJewelryId: null,
+    currentPlacementPrompt: '',
+    workingImage: null,
+    isAddingJewelry: false,
+    isRefusing: false,
     isRepositioning: false,
     mannequinHistory: [],
-    bannerHistory: [],
+    workingHistory: [],
     error: null,
-  }),
-
-  goBackToStep: (step) => set(() => {
-    if (step === 1) {
-      return {
-        currentStep: 1 as const,
-        bannerImage: null,
-        bannerHistory: [],
-        error: null,
-      };
-    }
-    return {
-      currentStep: 2 as const,
-      bannerImage: null,
-      bannerHistory: [],
-      error: null,
-    };
   }),
 }));
