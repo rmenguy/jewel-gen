@@ -43,20 +43,20 @@
 
 ### Production Stack UI (UI)
 
-- [ ] **UI-01**: Base photo panel shows locked base image prominently
-- [ ] **UI-02**: Output format selector with business-friendly labels (e.g., "Portrait 3:4", "Social Vertical 9:16", "Editorial Square 1:1")
-- [ ] **UI-03**: Stack plan panel shows ordered jewelry layers with drag-reorder capability
+- [x] **UI-01**: Base photo panel shows locked base image prominently
+- [x] **UI-02**: Output format selector with business-friendly labels (e.g., "Portrait 3:4", "Social Vertical 9:16", "Editorial Square 1:1")
+- [x] **UI-03**: Stack plan panel shows ordered jewelry layers with drag-reorder capability
 - [ ] **UI-04**: Reference bundle panel shows references grouped by role (base, character, jewelry, composition, style)
-- [ ] **UI-05**: Generation progress panel shows per-step status (preparing refs → applying piece N → validating → next piece)
-- [ ] **UI-06**: Follow-up edit panel accepts plain-language targeted edits
-- [ ] **UI-07**: Production Stack is the primary/default tab experience
+- [x] **UI-05**: Generation progress panel shows per-step status (preparing refs → applying piece N → validating → next piece)
+- [x] **UI-06**: Follow-up edit panel accepts plain-language targeted edits
+- [x] **UI-07**: Production Stack is the primary/default tab experience
 - [ ] **UI-08**: Internal debug view showing: references included vs excluded, final ordered reference list sent to model, generationConfig used
 
 ### Operator Efficiency (OPS)
 
 - [ ] **OPS-01**: One-click duplication of a stack session (clone base image, stack plan, references, format — change one variable and re-run)
 - [ ] **OPS-02**: Save and reuse stack presets / recipes (named configurations of stack plan + reference setup + output format)
-- [ ] **OPS-03**: Generation history within a session for quick visual comparison and rollback to any previous step
+- [x] **OPS-03**: Generation history within a session for quick visual comparison and rollback to any previous step
 
 ### Mannequin Engine Refactor (MANN)
 
@@ -143,17 +143,17 @@
 | STACK-11 | Phase 2 | Complete |
 | STACK-12 | Phase 2 | Complete |
 | STACK-13 | Phase 2 | Complete |
-| UI-01 | Phase 3 | Pending |
-| UI-02 | Phase 3 | Pending |
-| UI-03 | Phase 3 | Pending |
+| UI-01 | Phase 3 | Complete |
+| UI-02 | Phase 3 | Complete |
+| UI-03 | Phase 3 | Complete |
 | UI-04 | Phase 3 | Pending |
-| UI-05 | Phase 3 | Pending |
-| UI-06 | Phase 3 | Pending |
-| UI-07 | Phase 3 | Pending |
+| UI-05 | Phase 3 | Complete |
+| UI-06 | Phase 3 | Complete |
+| UI-07 | Phase 3 | Complete |
 | UI-08 | Phase 3 | Pending |
 | OPS-01 | Phase 3 | Pending |
 | OPS-02 | Phase 3 | Pending |
-| OPS-03 | Phase 3 | Pending |
+| OPS-03 | Phase 3 | Complete |
 | MANN-01 | Phase 3 | Pending |
 | MANN-02 | Phase 3 | Pending |
 | MANN-03 | Phase 3 | Pending |
