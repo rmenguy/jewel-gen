@@ -36,10 +36,10 @@ Production-grade jewelry placement on locked base photos with product fidelity, 
 - [x] Output format control (aspect ratio + resolution selection per session) — Phase 2
 - [x] Per-step validation during progressive stacking — Phase 2
 - [x] Multi-turn conversational follow-up edits after generation — Phase 2
-- [ ] Reference prioritization logic with user-visible feedback
-- [ ] Production Stack UI: base photo panel, output format panel, stack plan panel, reference bundle panel, generation progress panel, follow-up edit panel
-- [ ] Mannequin engine demoted to base image preparation studio (same single model)
-- [ ] Batch engine executes new production stack pipeline (after stabilization)
+- [x] Production Stack UI: base photo panel, output format panel, stack plan panel, reference bundle panel, generation progress panel, follow-up edit panel — Phase 3
+- [x] Mannequin engine demoted to base image preparation studio (same single model) — Phase 3
+- [x] Batch engine executes new production stack pipeline — Phase 3
+- [ ] Reference prioritization logic with user-visible feedback (deferred to v2)
 
 ### Out of Scope
 
@@ -126,4 +126,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after Phase 2 completion*
+*Last updated: 2026-03-24 after Phase 3 completion (v1.0 milestone complete)*
