@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { downloadBase64Image, downloadTextFile } from '../services/downloadService';
 import { BatchItem, BatchConfig, BatchStats, ProductionStackSession } from '../types';
-import { executeStackPlan, initializeStepStates } from '../services/stackEngine';
+import { executeComposition, initializeStepStates } from '../services/stackEngine';
 import { autoAssignZone } from '../services/geminiService';
 
 interface BatchEngineProps {
@@ -110,7 +110,7 @@ export const BatchEngine: React.FC<BatchEngineProps> = ({ mannequinImage }) => {
       };
 
       initializeStepStates(session);
-      await executeStackPlan(session, () => {});
+      await executeComposition(session, () => {}, () => {});
 
       if (session.currentImage) {
         setBatchItems(prev =>

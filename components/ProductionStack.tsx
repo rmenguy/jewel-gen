@@ -2,13 +2,14 @@ import React, { useState, useCallback } from 'react';
 import { useProductionStore } from '../stores/useProductionStore';
 import { StackLayer } from '../types';
 import {
-  executeStackPlan,
+  executeComposition,
+  resolveGenerationFlow,
   initializeStepStates,
   compactSnapshots,
   retryStep,
-  initFollowUpSession,
   sendFollowUpEdit,
 } from '../services/stackEngine';
+import type { GenerationFlow } from '../services/stackEngine';
 import { downloadBase64Image } from '../services/downloadService';
 
 // Panneaux enfants
@@ -99,6 +100,12 @@ export const ProductionStack: React.FC = () => {
     reorderStackLayers(layerIds);
   }, [reorderStackLayers]);
 
+  // ── Détection du flot de génération ──────────────────────────
+
+  const detectedFlow: GenerationFlow | null = stackSession
+    ? resolveGenerationFlow(stackSession)
+    : null;
+
   // ── Exécution du moteur de composition ──────────────────────
 
   const handleExecuteStack = useCallback(async () => {
@@ -108,7 +115,6 @@ export const ProductionStack: React.FC = () => {
 
     setIsExecuting(true);
     setError(null);
-    setProgressText('Préparation de la composition…');
 
     const mutableSession = structuredClone(session);
     mutableSession.chatSession = null;
@@ -117,29 +123,24 @@ export const ProductionStack: React.FC = () => {
     store.updateStackSession({ status: 'executing', stepStates: mutableSession.stepStates });
 
     try {
-      const totalLayers = mutableSession.layers.length;
-      await executeStackPlan(mutableSession, (stepIndex, stepState) => {
-        // Progression en temps réel — message simple
-        const layerName = mutableSession.layers[stepIndex]?.name || `Bijou ${stepIndex + 1}`;
-        if (stepState.status === 'executing') {
-          setProgressText(`Placement de ${layerName}… (${stepIndex + 1}/${totalLayers})`);
-        } else if (stepState.status === 'completed') {
-          setProgressText(`${layerName} placé ✓ (${stepIndex + 1}/${totalLayers})`);
-        } else if (stepState.status === 'failed') {
-          setProgressText(`Échec du placement de ${layerName}`);
-        }
-
-        useProductionStore.getState().updateStepState(stepIndex, {
-          status: stepState.status,
-          currentAttempt: stepState.currentAttempt,
-          snapshots: stepState.snapshots,
-          approvedSnapshotIndex: stepState.approvedSnapshotIndex,
-          error: stepState.error,
-        });
-        useProductionStore.getState().updateStackSession({
-          currentImage: mutableSession.currentImage,
-        });
-      });
+      await executeComposition(
+        mutableSession,
+        // onProgress — met à jour le texte de progression
+        (message) => setProgressText(message),
+        // onStepUpdate — synchronise le store en temps réel
+        (stepIndex, stepState) => {
+          useProductionStore.getState().updateStepState(stepIndex, {
+            status: stepState.status,
+            currentAttempt: stepState.currentAttempt,
+            snapshots: stepState.snapshots,
+            approvedSnapshotIndex: stepState.approvedSnapshotIndex,
+            error: stepState.error,
+          });
+          useProductionStore.getState().updateStackSession({
+            currentImage: mutableSession.currentImage,
+          });
+        },
+      );
 
       compactSnapshots(mutableSession);
 
@@ -176,15 +177,12 @@ export const ProductionStack: React.FC = () => {
     try {
       const mutableSession = { ...session };
 
-      if (!mutableSession.chatSession) {
-        initFollowUpSession(mutableSession);
-        store.updateStackSession({ status: 'follow-up', chatSession: mutableSession.chatSession });
-      }
-
       const newImage = await sendFollowUpEdit(mutableSession, prompt);
       store.updateStackSession({
         currentImage: newImage,
         followUpHistory: mutableSession.followUpHistory,
+        chatSession: mutableSession.chatSession,
+        status: 'follow-up',
       });
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la modification');
@@ -211,15 +209,7 @@ export const ProductionStack: React.FC = () => {
       const mutableSession = structuredClone(session);
       mutableSession.chatSession = null;
 
-      await retryStep(mutableSession, stepIndex, (idx, stepState) => {
-        useProductionStore.getState().updateStepState(idx, {
-          status: stepState.status,
-          currentAttempt: stepState.currentAttempt,
-          snapshots: stepState.snapshots,
-          approvedSnapshotIndex: stepState.approvedSnapshotIndex,
-          error: stepState.error,
-        });
-      });
+      await retryStep(mutableSession, stepIndex, (msg) => setProgressText(msg));
 
       store.updateStackSession({
         currentImage: mutableSession.currentImage,
@@ -356,7 +346,9 @@ export const ProductionStack: React.FC = () => {
                       disabled={isDisabled}
                       className="w-full"
                     >
-                      Générer la composition
+                      {detectedFlow === 'direct'
+                        ? `Composer (${stackSession!.layers.length} bijoux)`
+                        : 'Ajouter à la composition'}
                     </Button>
                   </div>
                 )}
