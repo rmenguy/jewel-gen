@@ -6,6 +6,7 @@ interface StackLayerRowProps {
   stepState?: StepState;
   onReorder: (dragId: string, dropId: string) => void;
   onRemove: (id: string) => void;
+  onRetry?: (id: string) => void;
   disabled?: boolean;
 }
 
@@ -26,6 +27,7 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
   stepState,
   onReorder,
   onRemove,
+  onRetry,
   disabled = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -141,6 +143,19 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
       <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
         {ZONE_LABELS[layer.targetZone] || layer.targetZone}
       </span>
+
+      {/* Retry button — shown when step failed */}
+      {status === 'failed' && onRetry && (
+        <button
+          type="button"
+          onClick={() => onRetry(layer.id)}
+          disabled={disabled}
+          className="flex-shrink-0 px-2 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded transition-colors disabled:opacity-40"
+          aria-label={`Retry ${layer.name}`}
+        >
+          Retry
+        </button>
+      )}
 
       {/* Remove button */}
       <button

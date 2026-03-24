@@ -185,6 +185,44 @@ export const ProductionStack: React.FC = () => {
     }
   }, []);
 
+  // ── Per-step retry (STACK-09) ─────────────────────────────
+
+  const handleRetryStep = useCallback(async (layerId: string) => {
+    const store = useProductionStore.getState();
+    const session = store.stackSession;
+    if (!session) return;
+
+    const stepIndex = session.layers.findIndex((l) => l.id === layerId);
+    if (stepIndex === -1) return;
+
+    setIsExecuting(true);
+    setError(null);
+
+    try {
+      const mutableSession = structuredClone(session);
+      mutableSession.chatSession = null;
+
+      await retryStep(mutableSession, stepIndex, (idx, stepState) => {
+        useProductionStore.getState().updateStepState(idx, {
+          status: stepState.status,
+          currentAttempt: stepState.currentAttempt,
+          snapshots: stepState.snapshots,
+          approvedSnapshotIndex: stepState.approvedSnapshotIndex,
+          error: stepState.error,
+        });
+      });
+
+      store.updateStackSession({
+        currentImage: mutableSession.currentImage,
+        stepStates: mutableSession.stepStates,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Retry failed');
+    } finally {
+      setIsExecuting(false);
+    }
+  }, []);
+
   // ── Step history ───────────────────────────────────────────
 
   const handleStepClick = useCallback((stepIndex: number) => {
@@ -409,6 +447,7 @@ export const ProductionStack: React.FC = () => {
                 stepStates={stackSession.stepStates}
                 onReorder={handleReorderLayers}
                 onRemove={handleRemoveLayer}
+                onRetry={handleRetryStep}
                 onAddLayer={handleAddLayer}
                 disabled={isDisabled}
               />

@@ -9,6 +9,7 @@ interface StackPlanPanelProps {
   stepStates: StepState[];
   onReorder: (layerIds: string[]) => void;
   onRemove: (id: string) => void;
+  onRetry?: (id: string) => void;
   onAddLayer: (layer: StackLayer) => void;
   disabled?: boolean;
 }
@@ -18,6 +19,7 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
   stepStates,
   onReorder,
   onRemove,
+  onRetry,
   onAddLayer,
   disabled = false,
 }) => {
@@ -70,6 +72,7 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
                 stepState={getStepState(layer.id)}
                 onReorder={handleReorder}
                 onRemove={onRemove}
+                onRetry={onRetry}
                 disabled={disabled}
               />
             ))}
