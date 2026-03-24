@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, ReferenceImage, ReferenceBundle, EffectiveBundle, ParsedImageResponse, ImageGenerationConfig, ImageChatSession, TargetZone } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, TargetZone } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -74,7 +74,65 @@ export function getApiKey(): string {
     return API_KEY;
 }
 
-// Legacy model-specific API callers removed — all calls now go through callUnifiedAPI
+/**
+ * Auto-assign a target zone based on jewelry category.
+ */
+export function autoAssignZone(category: string): TargetZone {
+    const map: Record<string, TargetZone> = {
+        collier: 'collarbone',
+        sautoir: 'mid-chest',
+        boucles: 'ear-lobe',
+        bracelet: 'wrist',
+        bague: 'finger',
+        pendentif: 'upper-chest',
+        broche: 'upper-chest',
+    };
+    return map[category.toLowerCase()] ?? 'collarbone';
+}
+
+/**
+ * Call the Gemini API directly from the browser (CORS supported by Google).
+ */
+async function callGeminiAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
+    const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
+    const body = JSON.stringify(requestBody);
+    console.log(`[GEMINI] Calling ${model}, body size: ${body.length}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+}
+
+/**
+ * Call Imagen 4 via :predict endpoint directly from the browser.
+ */
+async function callImagenAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
+    const url = `${GEMINI_BASE}/models/${model}:predict?key=${API_KEY}`;
+    const body = JSON.stringify(requestBody);
+    console.log(`[IMAGEN] Calling ${model}, body size: ${body.length}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+}
 
 /**
  * Enhanced retry logic with exponential backoff and jitter.

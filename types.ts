@@ -188,71 +188,60 @@ export interface SupabaseProduct {
   metadata: Record<string, any>;
 }
 
-// ─── Production Stack Engine ─────────────────────────────────
+// ─── Production Stack Types ─────────────────────────────────
 
-export interface ReferenceImage {
-  id: string;
-  base64: string;
-  role: 'character' | 'object' | 'composition' | 'style';
-  label: string;
-}
+export type TargetZone =
+  | 'neck-base' | 'collarbone' | 'upper-chest' | 'mid-chest' | 'navel'
+  | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
 
 export interface StackLayer {
   id: string;
+  ordinal: number;
+  name: string;
   productImage: string;
-  productName: string;
-  category: string;
-  targetZone: string;
-  order: number;
+  productCategory: string;
+  targetZone: TargetZone;
+  blueprint?: JewelryBlueprint;
+  dimensions?: ProductDimensions;
 }
 
-export interface StepState {
-  layerId: string;
-  status: 'pending' | 'executing' | 'validating' | 'completed' | 'failed';
-  resultImage?: string;
-  error?: string;
+export type StepStatus = 'pending' | 'executing' | 'validating' | 'completed' | 'failed' | 'retrying';
+
+export interface ReferenceImage {
+  role: 'character' | 'object' | 'composition' | 'style';
+  base64: string;
+  label: string;
 }
 
-export interface ImageChatSession {
-  sessionId: string;
-  turns: Array<{ role: string; content: string }>;
+export interface ImageGenerationConfig {
+  aspectRatio: string;
+  resolution: string;
+  temperature?: number;
+  numberOfImages?: number;
 }
 
 export interface GenerationSnapshot {
   stepIndex: number;
+  layerId: string;
   prompt: string;
-  resultImage: string;
+  referencesUsed: ReferenceImage[];
+  referencesExcluded: ReferenceImage[];
+  generationConfig: ImageGenerationConfig;
+  inputImage: string;
+  outputImage: string;
+  validation: PixelFidelityResult | null;
   timestamp: number;
+  attemptNumber: number;
 }
 
-export interface ReferenceBundle {
-  character: ReferenceImage[];
-  object: ReferenceImage[];
-  composition: ReferenceImage[];
-  style: ReferenceImage[];
-}
-
-export interface EffectiveBundle {
-  included: ReferenceImage[];
-  excluded: ReferenceImage[];
-}
-
-export interface ProductionStackSession {
-  id: string;
-  baseImage: string;
-  aspectRatio: string;
-  imageSize: string;
-  layers: StackLayer[];
-  stepStates: StepState[];
-  currentImage: string | null;
-  chatSession: ImageChatSession | null;
-  followUpHistory: GenerationSnapshot[];
-  status: 'planning' | 'executing' | 'completed' | 'follow-up';
-  createdAt: number;
-  referenceBundle: ReferenceBundle | null;
-  effectiveReferenceBundle: EffectiveBundle | null;
-  excludedReferences: ReferenceImage[];
-  validationResults: PixelFidelityResult[];
+export interface StepState {
+  layerId: string;
+  status: StepStatus;
+  currentAttempt: number;
+  maxAttempts: number;
+  snapshots: GenerationSnapshot[];
+  approvedSnapshotIndex: number | null;
+  error?: string;
 }
 
 // ─── Banner Engine ───────────────────────────────────────────
