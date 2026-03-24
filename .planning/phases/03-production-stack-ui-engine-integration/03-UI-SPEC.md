@@ -21,7 +21,7 @@ created: 2026-03-24
 | Preset | not applicable |
 | Component library | none (hand-rolled `components/ui/*` + `components/Button.tsx`) |
 | Icon library | Inline SVG (heroicons-style paths, no external dependency) |
-| Font | Inter (300-800) body + JetBrains Mono (400-500) debug/mono |
+| Font | Inter (400, 600) body + JetBrains Mono (400) debug/mono |
 
 Source: `tailwind.config.js`, `src/index.css`, existing components.
 
@@ -54,10 +54,12 @@ Exceptions:
 |------|------|--------|-------------|-------|
 | Body | 14px | 400 (regular) | 1.5 | Descriptions, follow-up edit input, debug text |
 | Label | 11px | 600 (semibold) | 1.3 | Section headers, status badges, uppercase tracking-wider (matches existing `SectionLabel` pattern: `text-xs font-semibold uppercase tracking-wider text-gray-500`) |
-| Heading | 18px | 700 (bold) | 1.2 | Panel titles ("Stack Plan", "Generation Progress", "Follow-Up Edits") |
-| Display | 24px | 800 (extrabold) | 1.1 | Session name in header bar only |
+| Heading | 18px | 600 (semibold) | 1.2 | Panel titles ("Stack Plan", "Generation Progress", "Follow-Up Edits") |
+| Display | 24px | 600 (semibold) | 1.1 | Session name in header bar only |
 
-Source: Existing `MannequinEngine.tsx` SectionLabel uses `text-xs font-semibold uppercase tracking-wider`. Button.tsx uses `font-medium` at 14px. App.tsx header uses `text-lg font-black tracking-tighter`.
+Two weights only: 400 (regular) for body text and 600 (semibold) for all headings, labels, and display text.
+
+Source: Existing `MannequinEngine.tsx` SectionLabel uses `text-xs font-semibold uppercase tracking-wider`. Button.tsx uses `font-medium` at 14px. App.tsx header mapped to semibold for weight constraint compliance.
 
 ---
 
@@ -134,7 +136,7 @@ Add a prominent "Send to Stack" button (indigo-600, full-width) in the center pa
 
 ### Operator Efficiency UI (OPS-01, OPS-02, OPS-03)
 
-**Duplicate Session (OPS-01)**: Icon button (copy icon) in session header bar. Creates a clone of the current session with a new ID, resets stepStates to pending, keeps layers/format/base.
+**Duplicate Session (OPS-01)**: Icon button (copy icon) in session header bar. Creates a clone of the current session with a new ID, resets stepStates to pending, keeps layers/format/base. `aria-label="Duplicate session"`.
 
 **Save/Load Presets (OPS-02)**: "Save as Preset" button in session header. Opens modal with name input. Presets stored in localStorage (same pattern as `customPresets` in production store). "Load Preset" dropdown in the session setup panel.
 
@@ -156,24 +158,19 @@ Add a prominent "Send to Stack" button (indigo-600, full-width) in the center pa
 | Completed | Left 3px emerald-500 border, checkmark overlay on thumbnail |
 | Failed | Left 3px red-500 border, exclamation icon overlay |
 
-### Step Progress Segment
+---
 
-| State | Color | Animation |
-|-------|-------|-----------|
-| Pending | `bg-gray-200` | None |
-| Executing | `bg-indigo-600` | `animate-pulse` |
-| Validating | `bg-amber-500` | `animate-pulse` |
-| Completed | `bg-emerald-500` | None |
-| Failed | `bg-red-500` | None |
-| Retrying | `bg-amber-500` | `animate-pulse` |
+## Accessibility: Icon-Only Interactive Elements
 
-### Base Image Lock
+All icon-only buttons must include an `aria-label` attribute. The following are declared for this phase:
 
-| State | Visual |
-|-------|--------|
-| No image | Dashed border-2 gray-300, upload icon + "Upload Base Image" CTA |
-| Image loaded, unlocked | Solid border gray-200, "Lock Base Image" button visible |
-| Image locked | Solid border-2 indigo-600, lock icon overlay top-right, no upload zone |
+| Element | Icon | `aria-label` |
+|---------|------|-------------|
+| Duplicate session button (SessionToolbar) | Copy icon (two overlapping squares) | `"Duplicate session"` |
+| Remove layer button (StackLayerRow) | X icon (cross) | `"Remove {layer name}"` (dynamic, interpolates layer name) |
+| Drag handle grip (StackLayerRow) | 6-dot grip icon | `"Reorder {layer name}"` (dynamic, interpolates layer name) |
+| Lock base image indicator (BasePhotoPanel) | Lock icon | `"Base image locked"` (decorative when locked; button `"Lock base image"` when unlockable) |
+| Collapse debug view toggle (DebugInspector) | Chevron icon | `"Expand debug inspector"` / `"Collapse debug inspector"` (toggles) |
 
 ---
 
