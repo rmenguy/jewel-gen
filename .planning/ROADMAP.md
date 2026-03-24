@@ -60,12 +60,13 @@ Plans:
   3. Batch engine executes the production stack pipeline (not a separate code path) using the same unified service and reference architecture
   4. User can duplicate a stack session (clone everything, change one variable, re-run), save/load named stack presets, and visually compare any previous step in generation history
   5. Internal debug view shows references included vs excluded, final ordered reference list, and generationConfig for any generation step
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Production Stack UI panels and layout
-- [ ] 03-02: Mannequin refactor, Batch alignment, and operator efficiency features
+- [ ] 03-01-PLAN.md -- ProductionStack layout shell, BasePhotoPanel, OutputFormatSelector, SectionLabel extraction, App.tsx wiring with STACK default tab
+- [ ] 03-02-PLAN.md -- StackPlanPanel with drag-reorder, AddLayerForm, GenerationProgressBar, FollowUpInput, StepHistoryStrip
+- [ ] 03-03-PLAN.md -- Engine execution wiring, ReferenceBundlePanel, DebugInspector, SessionToolbar, PresetModal, operator efficiency store actions
+- [ ] 03-04-PLAN.md -- MannequinEngine Send to Stack refactor, BatchEngine stack pipeline alignment
 
 ## Progress
 
@@ -76,4 +77,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Unified Image Service & Reference Architecture | 2/2 | Complete | - |
 | 2. Production Stack Engine | 0/2 | Not started | - |
-| 3. Production Stack UI & Engine Integration | 0/2 | Not started | - |
+| 3. Production Stack UI & Engine Integration | 0/4 | Not started | - |
