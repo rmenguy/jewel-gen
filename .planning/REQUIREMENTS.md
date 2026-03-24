@@ -27,11 +27,11 @@
 
 ### Production Stack Workflow (STACK)
 
-- [x] **STACK-01**: User can select a locked base mannequin image to start a production stack session
-- [x] **STACK-02**: User can choose output format: aspect ratio (1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9) and resolution (512, 1K, 2K, 4K)
-- [x] **STACK-03**: User can assemble jewelry pieces into an ordered stack plan with named layers
-- [x] **STACK-04**: Each stack layer has a target zone (neck-base, collarbone, upper-chest, mid-chest, navel, ear-lobe, ear-upper, wrist, finger)
-- [x] **STACK-05**: System auto-assigns target zones based on jewelry category when not specified
+- [ ] **STACK-01**: User can select a locked base mannequin image to start a production stack session
+- [ ] **STACK-02**: User can choose output format: aspect ratio (1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9) and resolution (512, 1K, 2K, 4K)
+- [ ] **STACK-03**: User can assemble jewelry pieces into an ordered stack plan with named layers
+- [ ] **STACK-04**: Each stack layer has a target zone (neck-base, collarbone, upper-chest, mid-chest, navel, ear-lobe, ear-upper, wrist, finger)
+- [ ] **STACK-05**: System auto-assigns target zones based on jewelry category when not specified
 - [ ] **STACK-06**: System organizes references into explicit roles (base, character, jewelry, composition, style) per step
 - [ ] **STACK-07**: Engine performs progressive sequential edits — one jewelry piece per step on the same visual foundation
 - [ ] **STACK-08**: Per-step validation checks local product fidelity after each placement
@@ -72,8 +72,8 @@
 
 ### State Management (STATE)
 
-- [x] **STATE-01**: ProductionStackSession state type with baseImage, aspectRatio, imageSize, stackLayers, referenceBundle, effectiveReferenceBundle, excludedReferences, validationResults, history
-- [x] **STATE-02**: Stack session state persisted in Zustand store
+- [ ] **STATE-01**: ProductionStackSession state type with baseImage, aspectRatio, imageSize, stackLayers, referenceBundle, effectiveReferenceBundle, excludedReferences, validationResults, history
+- [ ] **STATE-02**: Stack session state persisted in Zustand store
 - [ ] **STATE-03**: History entries track each step's input/output for undo capability
 - [ ] **STATE-04**: Persist full generation snapshot per step: prompt text, references used (after prioritization), model config, output format, and result — enabling reproducibility and debugging
 
@@ -130,11 +130,11 @@
 | REF-05 | Phase 1 | Complete |
 | REF-06 | Phase 1 | Complete |
 | REF-07 | Phase 1 | Complete |
-| STACK-01 | Phase 2 | Complete |
-| STACK-02 | Phase 2 | Complete |
-| STACK-03 | Phase 2 | Complete |
-| STACK-04 | Phase 2 | Complete |
-| STACK-05 | Phase 2 | Complete |
+| STACK-01 | Phase 2 | Pending |
+| STACK-02 | Phase 2 | Pending |
+| STACK-03 | Phase 2 | Pending |
+| STACK-04 | Phase 2 | Pending |
+| STACK-05 | Phase 2 | Pending |
 | STACK-06 | Phase 2 | Pending |
 | STACK-07 | Phase 2 | Pending |
 | STACK-08 | Phase 2 | Pending |
@@ -160,8 +160,8 @@
 | MANN-04 | Phase 3 | Pending |
 | BATCH-01 | Phase 3 | Pending |
 | BATCH-02 | Phase 3 | Pending |
-| STATE-01 | Phase 2 | Complete |
-| STATE-02 | Phase 2 | Complete |
+| STATE-01 | Phase 2 | Pending |
+| STATE-02 | Phase 2 | Pending |
 | STATE-03 | Phase 2 | Pending |
 | STATE-04 | Phase 2 | Pending |
 | CLEAN-01 | Phase 1 | Complete |
