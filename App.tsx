@@ -5,13 +5,14 @@ import { useProductionStore } from './stores/useProductionStore';
 import { CatalogEngine } from './components/CatalogEngine';
 import { MannequinEngine } from './components/MannequinEngine';
 import { ProductionEngine } from './components/ProductionEngine';
+import { ProductionStack } from './components/ProductionStack';
 import { BatchEngine } from './components/BatchEngine';
 import BannerEngine from './components/BannerEngine';
 import { EngineType, Product } from './types';
 
 const App: React.FC = () => {
   const { apiKeySet, activeEngine, setApiKey, setActiveEngine } = useAppStore();
-  const { queue, setQueue, mannequinImage, setMannequinImage, addProductsToQueue } = useProductionStore();
+  const { mannequinImage, setMannequinImage, addProductsToQueue } = useProductionStore();
   const [apiKeyInput, setApiKeyInput] = useState('');
 
   const handleCatalogTransfer = (products: Product[]) => {
@@ -88,7 +89,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex flex-col">
                     <h1 className="text-lg font-black tracking-tighter text-gray-900 leading-none">
-                        <span className="text-indigo-600">{activeEngine}</span>.ENGINE
+                        <span className="text-indigo-600">{activeEngine === 'PRODUCTION' ? 'STACK' : activeEngine}</span>.ENGINE
                     </h1>
                     <p className="text-[9px] text-gray-500 font-medium uppercase tracking-[0.3em] leading-none mt-1">
                         AC.MARKETING SUITE
@@ -97,17 +98,22 @@ const App: React.FC = () => {
             </div>
 
             <nav className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                {(['CATALOG', 'MANNEQUIN', 'PRODUCTION', 'BATCH', 'BANNER'] as EngineType[]).map((engine) => (
+                {([
+                    { key: 'PRODUCTION' as EngineType, label: 'STACK' },
+                    { key: 'MANNEQUIN' as EngineType, label: 'MANNEQUIN' },
+                    { key: 'CATALOG' as EngineType, label: 'CATALOG' },
+                    { key: 'BATCH' as EngineType, label: 'BATCH' },
+                ]).map(({ key, label }) => (
                     <button
-                        key={engine}
-                        onClick={() => setActiveEngine(engine)}
+                        key={key}
+                        onClick={() => setActiveEngine(key)}
                         className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wider transition-all duration-300 ${
-                            activeEngine === engine
+                            activeEngine === key
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
                         }`}
                     >
-                        {engine}
+                        {label}
                     </button>
                 ))}
             </nav>
@@ -118,11 +124,10 @@ const App: React.FC = () => {
                     onChange={(e) => setActiveEngine(e.target.value as EngineType)}
                     className="bg-white border border-gray-200 text-xs font-bold rounded-lg px-2 py-1 outline-none text-gray-900"
                  >
-                    <option value="CATALOG">CATALOG</option>
+                    <option value="PRODUCTION">STACK</option>
                     <option value="MANNEQUIN">MANNEQUIN</option>
-                    <option value="PRODUCTION">PRODUCTION</option>
+                    <option value="CATALOG">CATALOG</option>
                     <option value="BATCH">BATCH</option>
-                    <option value="BANNER">BANNER</option>
                  </select>
             </div>
         </div>
@@ -139,21 +144,14 @@ const App: React.FC = () => {
         </div>
 
         <div className={activeEngine === 'PRODUCTION' ? 'block h-full' : 'hidden h-full'}>
-            <ProductionEngine
-                queue={queue}
-                setQueue={setQueue}
-                mannequinImage={mannequinImage}
-                setMannequinImage={setMannequinImage}
-            />
+            <ProductionStack />
         </div>
 
         <div className={activeEngine === 'BATCH' ? 'block h-full' : 'hidden h-full'}>
             <BatchEngine mannequinImage={mannequinImage} />
         </div>
 
-        <div className={activeEngine === 'BANNER' ? 'block' : 'hidden'}>
-            <BannerEngine />
-        </div>
+        {/* Banner engine hidden per Phase 1 decision — preserved for future re-enablement */}
       </main>
 
       {/* Footer */}
