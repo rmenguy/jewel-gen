@@ -44,11 +44,11 @@ Plans:
   3. After each placement step, the system validates product fidelity and the user can retry that specific step without restarting the whole stack
   4. User can type a plain-language follow-up edit after generation that preserves all previously approved jewelry
   5. Every step's full generation snapshot (prompt, references used, model config, output format, result) is recorded in session history for undo and debugging
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Stack session state and planning layer
-- [ ] 02-02: Progressive execution engine with validation and follow-up
+- [ ] 02-01-PLAN.md -- Production Stack types, target zone centralization, output format constants, Zustand session state
+- [ ] 02-02-PLAN.md -- Progressive execution engine with snapshot recording, step retry, follow-up editing, memory compaction
 
 ### Phase 3: Production Stack UI & Engine Integration
 **Goal**: The Production Stack is the primary app experience with a purpose-built interface, Mannequin engine feeds base images into it, Batch engine uses its pipeline, and operators can duplicate/save/compare sessions
@@ -74,6 +74,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Unified Image Service & Reference Architecture | 0/2 | Not started | - |
+| 1. Unified Image Service & Reference Architecture | 2/2 | Complete | - |
 | 2. Production Stack Engine | 0/2 | Not started | - |
 | 3. Production Stack UI & Engine Integration | 0/2 | Not started | - |
