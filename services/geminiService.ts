@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, ReferenceImage, ReferenceBundle, EffectiveBundle, ParsedImageResponse, ImageGenerationConfig, ImageChatSession } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -125,6 +125,232 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
   }
   throw lastError;
 }
+
+// ─── Unified Image Service Infrastructure ───────────────────────
+
+export const IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
+const TEXT_MODEL = 'gemini-3-flash-preview'; // For text-only tasks (MODEL-06)
+
+function extractBase64(input: string): string {
+  return input.includes('base64,') ? input.split(',')[1] : input;
+}
+
+async function callUnifiedAPI(
+  model: string,
+  requestBody: Record<string, unknown>
+): Promise<any> {
+  const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
+  const body = JSON.stringify(requestBody);
+  console.log(`[GEMINI-UNIFIED] Calling ${model}, body size: ${body.length}`);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API error ${response.status}: ${errorText}`);
+  }
+  return response.json();
+}
+
+export function parseImageResponse(response: any): ParsedImageResponse {
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  const images: ParsedImageResponse['images'] = [];
+  const signatures: ParsedImageResponse['thoughtSignatures'] = [];
+  let text: string | null = null;
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.inlineData) {
+      images.push({
+        mimeType: part.inlineData.mimeType,
+        data: part.inlineData.data,
+        dataUri: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+      });
+    }
+    if (part.text) {
+      text = part.text;
+    }
+    if (part.thought_signature || part.thoughtSignature) {
+      signatures.push({ partIndex: i, signature: part.thought_signature || part.thoughtSignature });
+    }
+  }
+  return { images, text, thoughtSignatures: signatures, rawParts: parts };
+}
+
+const REFERENCE_BUDGET = { character: 4, object: 10, total: 14 } as const;
+
+export function enforceReferenceBudget(bundle: ReferenceBundle): EffectiveBundle {
+  // Collect all refs. Composition and style count toward object budget (REF-07).
+  const allRefs: ReferenceImage[] = [
+    ...bundle.characterReferences,
+    ...bundle.objectReferences,
+    ...bundle.compositionReferences.map(r => ({ ...r, kind: 'object' as const })),
+    ...bundle.styleReferences.map(r => ({ ...r, kind: 'object' as const })),
+  ].sort((a, b) => a.priority - b.priority); // REF-04: deterministic priority sort
+
+  const included: ReferenceImage[] = [];
+  const excluded: ReferenceImage[] = [];
+  let charCount = 0;
+  let objCount = 0;
+
+  for (const ref of allRefs) {
+    if (ref.kind === 'character' && charCount < REFERENCE_BUDGET.character) {
+      included.push(ref);
+      charCount++;
+    } else if (ref.kind !== 'character' && objCount < REFERENCE_BUDGET.object) {
+      included.push(ref);
+      objCount++;
+    } else {
+      excluded.push(ref);
+    }
+  }
+
+  return {
+    included,
+    excluded,
+    budget: {
+      character: { used: charCount, max: REFERENCE_BUDGET.character },
+      object: { used: objCount, max: REFERENCE_BUDGET.object },
+    },
+  };
+}
+
+function buildReferenceRolePrompt(effective: EffectiveBundle): string {
+  return effective.included
+    .map((ref, i) => `Image ${i + 1}: ${ref.role}`)
+    .join('\n');
+}
+
+function buildEditRequest(
+  prompt: string,
+  effectiveBundle: EffectiveBundle,
+  config?: ImageGenerationConfig
+): Record<string, unknown> {
+  const roleAnnotation = buildReferenceRolePrompt(effectiveBundle);
+  const fullPrompt = roleAnnotation
+    ? `${prompt}\n\nREFERENCE IMAGES:\n${roleAnnotation}`
+    : prompt;
+
+  const parts: any[] = [{ text: fullPrompt }];
+  for (const ref of effectiveBundle.included) {
+    parts.push({
+      inlineData: { mimeType: ref.mimeType, data: ref.base64 },
+    });
+  }
+
+  return {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+    },
+  };
+}
+
+// --- generateImageFromPrompt (text-to-image, no reference images) ---
+export const generateImageFromPrompt = async (
+  prompt: string,
+  config?: ImageGenerationConfig
+): Promise<ParsedImageResponse> => {
+  return withRetry(async () => {
+    const response = await callUnifiedAPI(IMAGE_MODEL, {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+      },
+    });
+    return parseImageResponse(response);
+  });
+};
+
+// --- editImageFromPrompt (single image input + text prompt) ---
+export const editImageFromPrompt = async (
+  imageBase64: string,
+  mimeType: string,
+  prompt: string,
+  config?: ImageGenerationConfig
+): Promise<ParsedImageResponse> => {
+  return withRetry(async () => {
+    const data = extractBase64(imageBase64);
+    const response = await callUnifiedAPI(IMAGE_MODEL, {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data } },
+        ],
+      }],
+      generationConfig: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+      },
+    });
+    return parseImageResponse(response);
+  });
+};
+
+// --- editImageWithReferences (multi-reference edit with budget enforcement) ---
+export const editImageWithReferences = async (
+  prompt: string,
+  bundle: ReferenceBundle,
+  config?: ImageGenerationConfig
+): Promise<{ response: ParsedImageResponse; effective: EffectiveBundle }> => {
+  return withRetry(async () => {
+    const effective = enforceReferenceBudget(bundle);
+    const requestBody = buildEditRequest(prompt, effective, config);
+    const apiResponse = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    return { response: parseImageResponse(apiResponse), effective };
+  });
+};
+
+// --- createImageChatSession (per MODEL-07) ---
+export const createImageChatSession = (config?: {
+  aspectRatio?: string;
+  imageSize?: string;
+}): ImageChatSession => {
+  return {
+    history: [],
+    model: IMAGE_MODEL,
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      ...(config?.aspectRatio || config?.imageSize ? {
+        imageConfig: {
+          ...(config.aspectRatio && { aspectRatio: config.aspectRatio }),
+          ...(config.imageSize && { imageSize: config.imageSize }),
+        },
+      } : {}),
+    },
+  };
+};
+
+// --- continueImageChatSession (per MODEL-07, preserves thought_signature) ---
+export const continueImageChatSession = async (
+  session: ImageChatSession,
+  userParts: any[]
+): Promise<ParsedImageResponse> => {
+  return withRetry(async () => {
+    session.history.push({ role: 'user', parts: userParts });
+
+    const response = await callUnifiedAPI(session.model, {
+      contents: session.history,
+      generationConfig: session.generationConfig,
+    });
+
+    const parsed = parseImageResponse(response);
+
+    // CRITICAL: Store raw parts including thought_signature fields (Pitfall 2)
+    session.history.push({
+      role: 'model',
+      parts: parsed.rawParts,
+    });
+
+    return parsed;
+  });
+};
+
+// ─── End Unified Image Service Infrastructure ───────────────────
 
 export const extractShopifyCatalog = async (storeUrl: string): Promise<ExtractionResult> => {
   return withRetry(async () => {
