@@ -12,16 +12,11 @@ import { EngineType, Product } from './types';
 
 const App: React.FC = () => {
   const { apiKeySet, activeEngine, setApiKey, setActiveEngine } = useAppStore();
-  const { mannequinImage, setMannequinImage, addProductsToQueue } = useProductionStore();
+  const { mannequinImage, addProductsToQueue } = useProductionStore();
   const [apiKeyInput, setApiKeyInput] = useState('');
 
   const handleCatalogTransfer = (products: Product[]) => {
       addProductsToQueue(products);
-      setActiveEngine('PRODUCTION');
-  };
-
-  const handleMannequinTransfer = (image: string) => {
-      setMannequinImage(image);
       setActiveEngine('PRODUCTION');
   };
 

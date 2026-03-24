@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { downloadBase64Image, downloadTextFile } from '../services/downloadService';
-import { BatchItem, BatchConfig, BatchStats } from '../types';
-import { generateProductionPhoto } from '../services/geminiService';
+import { BatchItem, BatchConfig, BatchStats, ProductionStackSession } from '../types';
+import { executeStackPlan, initializeStepStates } from '../services/stackEngine';
+import { autoAssignZone } from '../services/geminiService';
 
 interface BatchEngineProps {
   mannequinImage: string | null;
@@ -68,7 +69,7 @@ export const BatchEngine: React.FC<BatchEngineProps> = ({ mannequinImage }) => {
     reader.readAsText(file);
   };
 
-  // Process batch with parallelization
+  // Process batch sequentially using the production stack pipeline (BATCH-01/02)
   const processBatch = async () => {
     if (!mannequinImage) {
       alert('Veuillez d\'abord creer un mannequin !');
@@ -77,11 +78,57 @@ export const BatchEngine: React.FC<BatchEngineProps> = ({ mannequinImage }) => {
 
     setIsProcessing(true);
     setIsPaused(false);
-    const startTime = Date.now();
 
-    // Process items in parallel (config.parallelCount at a time)
+    // Process a single item through the stack pipeline
     const processItem = async (item: BatchItem): Promise<void> => {
-      if (isPaused) return;
+      if (!mannequinImage) return;
+
+      // Create a temporary session (not stored in Zustand — batch manages its own state)
+      const session: ProductionStackSession = {
+        id: crypto.randomUUID(),
+        baseImage: mannequinImage,
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        layers: [{
+          id: crypto.randomUUID(),
+          ordinal: 0,
+          name: item.sku,
+          productImage: item.productImageUrl || '',
+          productCategory: item.category,
+          targetZone: autoAssignZone(item.category),
+        }],
+        stepStates: [],
+        currentImage: null,
+        chatSession: null,
+        followUpHistory: [],
+        status: 'planning',
+        createdAt: Date.now(),
+        referenceBundle: null,
+        effectiveReferenceBundle: null,
+        excludedReferences: [],
+        validationResults: [],
+      };
+
+      initializeStepStates(session);
+      await executeStackPlan(session, () => {});
+
+      if (session.currentImage) {
+        setBatchItems(prev =>
+          prev.map(i => i.id === item.id
+            ? { ...i, status: 'COMPLETED' as const, resultImage: session.currentImage!, progress: 100, completedAt: new Date() }
+            : i
+          )
+        );
+      } else {
+        throw new Error('Stack execution produced no output image');
+      }
+    };
+
+    // Sequential processing — one item at a time to respect rate limits (BATCH-02)
+    const pendingItems = batchItems.filter(i => i.status === 'PENDING');
+
+    for (const item of pendingItems) {
+      if (isPaused) break;
 
       // Update status to processing
       setBatchItems(prev =>
@@ -89,58 +136,18 @@ export const BatchEngine: React.FC<BatchEngineProps> = ({ mannequinImage }) => {
       );
 
       try {
-        const resultImage = await generateProductionPhoto(
-          mannequinImage,
-          item.productImageUrl || '',
-          item.customPrompt || config.artisticDirection,
-          item.category
-        );
-
-        // Update as completed
+        await processItem(item);
+      } catch (error: any) {
         setBatchItems(prev =>
-          prev.map(i =>
-            i.id === item.id
-              ? { ...i, status: 'COMPLETED' as const, resultImage, progress: 100, completedAt: new Date() }
-              : i
+          prev.map(i => i.id === item.id
+            ? { ...i, status: 'ERROR' as const, error: error.message, completedAt: new Date() }
+            : i
           )
         );
-
-        updateStats();
-      } catch (error: any) {
-        // Retry logic
-        if (item.retryCount < 3) {
-          setBatchItems(prev =>
-            prev.map(i => i.id === item.id ? { ...i, retryCount: i.retryCount + 1, status: 'PENDING' as const } : i)
-          );
-          await processItem(item); // Retry
-        } else {
-          // Mark as error after 3 retries
-          setBatchItems(prev =>
-            prev.map(i =>
-              i.id === item.id
-                ? { ...i, status: 'ERROR' as const, error: error.message, completedAt: new Date() }
-                : i
-            )
-          );
-          updateStats();
-        }
       }
-    };
 
-    // Parallel processing
-    const pendingItems = batchItems.filter(i => i.status === 'PENDING');
-    const batchSize = config.parallelCount;
-
-    for (let i = 0; i < pendingItems.length; i += batchSize) {
-      if (isPaused) break;
-
-      const batch = pendingItems.slice(i, i + batchSize);
-      await Promise.all(batch.map(processItem));
-
-      // Auto-save every 5 items
-      if (config.autoSave && (i + batchSize) % 5 === 0) {
-        saveProgress();
-      }
+      // Update stats after each item
+      updateStats();
     }
 
     setIsProcessing(false);

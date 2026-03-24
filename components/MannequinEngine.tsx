@@ -1,3 +1,4 @@
+// MANN-01/02: Mannequin generation and refinement use IMAGE_MODEL (gemini-3.1-flash-image-preview) via unified service since Phase 1
 import React, { useState, useCallback, useRef } from 'react';
 import { useMannequinStore } from '../stores/useMannequinStore';
 import { useProductionStore } from '../stores/useProductionStore';
@@ -257,7 +258,6 @@ export const MannequinEngine: React.FC = () => {
 
   const isModeLibre = !!(referenceImage || criteria.customPrompt?.trim());
 
-  const { setMannequinImage } = useProductionStore();
   const { setActiveEngine } = useAppStore();
 
   const [showBook, setShowBook] = useState(false);
@@ -412,12 +412,13 @@ export const MannequinEngine: React.FC = () => {
     downloadBase64Image(currentImage, filename);
   }, [currentImage]);
 
-  // --- Transfer to Production ---
-  const handleTransfer = useCallback(() => {
+  // --- Transfer to Production Stack (MANN-03/04) ---
+  const handleTransferToStack = useCallback(() => {
     if (!currentImage) return;
-    setMannequinImage(currentImage);
+    const { createStackSession } = useProductionStore.getState();
+    createStackSession(currentImage, '1:1', '1K');
     setActiveEngine('PRODUCTION');
-  }, [currentImage, setMannequinImage, setActiveEngine]);
+  }, [currentImage, setActiveEngine]);
 
   // --- Derived state ---
   const hasImage = !!currentImage;
@@ -1177,14 +1178,14 @@ export const MannequinEngine: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={handleTransfer}
+            onClick={handleTransferToStack}
             disabled={!hasImage || isBusy}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
-            Share
+            Send to Stack
           </button>
         </div>
       </aside>
