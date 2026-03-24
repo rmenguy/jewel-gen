@@ -27,19 +27,19 @@
 
 ### Production Stack Workflow (STACK)
 
-- [ ] **STACK-01**: User can select a locked base mannequin image to start a production stack session
-- [ ] **STACK-02**: User can choose output format: aspect ratio (1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9) and resolution (512, 1K, 2K, 4K)
-- [ ] **STACK-03**: User can assemble jewelry pieces into an ordered stack plan with named layers
-- [ ] **STACK-04**: Each stack layer has a target zone (neck-base, collarbone, upper-chest, mid-chest, navel, ear-lobe, ear-upper, wrist, finger)
-- [ ] **STACK-05**: System auto-assigns target zones based on jewelry category when not specified
-- [ ] **STACK-06**: System organizes references into explicit roles (base, character, jewelry, composition, style) per step
-- [ ] **STACK-07**: Engine performs progressive sequential edits — one jewelry piece per step on the same visual foundation
-- [ ] **STACK-08**: Per-step validation checks local product fidelity after each placement
-- [ ] **STACK-09**: User can retry a specific step without re-running the entire stack
-- [ ] **STACK-10**: User can request targeted follow-up edits in plain language after generation completes
-- [ ] **STACK-11**: Follow-up edits preserve all existing approved jewelry unless explicitly told otherwise
-- [ ] **STACK-12**: Enforce physical plausibility constraints (correct scale relative to body, realistic drape/hang, no object fusion between jewelry pieces)
-- [ ] **STACK-13**: Enforce placement locking — previously placed and approved jewelry must remain visually stable during subsequent placement steps
+- [x] **STACK-01**: User can select a locked base mannequin image to start a production stack session
+- [x] **STACK-02**: User can choose output format: aspect ratio (1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9) and resolution (512, 1K, 2K, 4K)
+- [x] **STACK-03**: User can assemble jewelry pieces into an ordered stack plan with named layers
+- [x] **STACK-04**: Each stack layer has a target zone (neck-base, collarbone, upper-chest, mid-chest, navel, ear-lobe, ear-upper, wrist, finger)
+- [x] **STACK-05**: System auto-assigns target zones based on jewelry category when not specified
+- [x] **STACK-06**: System organizes references into explicit roles (base, character, jewelry, composition, style) per step
+- [x] **STACK-07**: Engine performs progressive sequential edits — one jewelry piece per step on the same visual foundation
+- [x] **STACK-08**: Per-step validation checks local product fidelity after each placement
+- [x] **STACK-09**: User can retry a specific step without re-running the entire stack
+- [x] **STACK-10**: User can request targeted follow-up edits in plain language after generation completes
+- [x] **STACK-11**: Follow-up edits preserve all existing approved jewelry unless explicitly told otherwise
+- [x] **STACK-12**: Enforce physical plausibility constraints (correct scale relative to body, realistic drape/hang, no object fusion between jewelry pieces)
+- [x] **STACK-13**: Enforce placement locking — previously placed and approved jewelry must remain visually stable during subsequent placement steps
 
 ### Production Stack UI (UI)
 
@@ -72,10 +72,10 @@
 
 ### State Management (STATE)
 
-- [ ] **STATE-01**: ProductionStackSession state type with baseImage, aspectRatio, imageSize, stackLayers, referenceBundle, effectiveReferenceBundle, excludedReferences, validationResults, history
-- [ ] **STATE-02**: Stack session state persisted in Zustand store
-- [ ] **STATE-03**: History entries track each step's input/output for undo capability
-- [ ] **STATE-04**: Persist full generation snapshot per step: prompt text, references used (after prioritization), model config, output format, and result — enabling reproducibility and debugging
+- [x] **STATE-01**: ProductionStackSession state type with baseImage, aspectRatio, imageSize, stackLayers, referenceBundle, effectiveReferenceBundle, excludedReferences, validationResults, history
+- [x] **STATE-02**: Stack session state persisted in Zustand store
+- [x] **STATE-03**: History entries track each step's input/output for undo capability
+- [x] **STATE-04**: Persist full generation snapshot per step: prompt text, references used (after prioritization), model config, output format, and result — enabling reproducibility and debugging
 
 ### Cleanup (CLEAN)
 
@@ -130,19 +130,19 @@
 | REF-05 | Phase 1 | Complete |
 | REF-06 | Phase 1 | Complete |
 | REF-07 | Phase 1 | Complete |
-| STACK-01 | Phase 2 | Pending |
-| STACK-02 | Phase 2 | Pending |
-| STACK-03 | Phase 2 | Pending |
-| STACK-04 | Phase 2 | Pending |
-| STACK-05 | Phase 2 | Pending |
-| STACK-06 | Phase 2 | Pending |
-| STACK-07 | Phase 2 | Pending |
-| STACK-08 | Phase 2 | Pending |
-| STACK-09 | Phase 2 | Pending |
-| STACK-10 | Phase 2 | Pending |
-| STACK-11 | Phase 2 | Pending |
-| STACK-12 | Phase 2 | Pending |
-| STACK-13 | Phase 2 | Pending |
+| STACK-01 | Phase 2 | Complete |
+| STACK-02 | Phase 2 | Complete |
+| STACK-03 | Phase 2 | Complete |
+| STACK-04 | Phase 2 | Complete |
+| STACK-05 | Phase 2 | Complete |
+| STACK-06 | Phase 2 | Complete |
+| STACK-07 | Phase 2 | Complete |
+| STACK-08 | Phase 2 | Complete |
+| STACK-09 | Phase 2 | Complete |
+| STACK-10 | Phase 2 | Complete |
+| STACK-11 | Phase 2 | Complete |
+| STACK-12 | Phase 2 | Complete |
+| STACK-13 | Phase 2 | Complete |
 | UI-01 | Phase 3 | Pending |
 | UI-02 | Phase 3 | Pending |
 | UI-03 | Phase 3 | Pending |
@@ -160,10 +160,10 @@
 | MANN-04 | Phase 3 | Pending |
 | BATCH-01 | Phase 3 | Pending |
 | BATCH-02 | Phase 3 | Pending |
-| STATE-01 | Phase 2 | Pending |
-| STATE-02 | Phase 2 | Pending |
-| STATE-03 | Phase 2 | Pending |
-| STATE-04 | Phase 2 | Pending |
+| STATE-01 | Phase 2 | Complete |
+| STATE-02 | Phase 2 | Complete |
+| STATE-03 | Phase 2 | Complete |
+| STATE-04 | Phase 2 | Complete |
 | CLEAN-01 | Phase 1 | Complete |
 | CLEAN-02 | Phase 1 | Complete |
 | CLEAN-03 | Phase 1 | Complete |
