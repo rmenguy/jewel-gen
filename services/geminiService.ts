@@ -39,6 +39,30 @@ Les images sont la priorité absolue. Pour chaque produit, tu dois trouver l'URL
 - Si le site bloque l'accès direct, utilise Google Search pour trouver l'image correspondante via l'onglet Images.
 `;
 
+// ─── Output Format Constants ─────────────────────────────────
+
+export const ASPECT_RATIOS = [
+  { value: '1:1', label: 'Square 1:1' },
+  { value: '2:3', label: 'Portrait 2:3' },
+  { value: '3:2', label: 'Landscape 3:2' },
+  { value: '3:4', label: 'Portrait 3:4' },
+  { value: '4:3', label: 'Landscape 4:3' },
+  { value: '4:5', label: 'Social Portrait' },
+  { value: '5:4', label: 'Social Landscape' },
+  { value: '9:16', label: 'Story / Vertical' },
+  { value: '16:9', label: 'Banner / Wide' },
+  { value: '21:9', label: 'Ultra Wide' },
+] as const;
+
+export const IMAGE_SIZES = [
+  { value: '512', label: '512px (Draft)' },
+  { value: '1K', label: '1K (Preview)' },
+  { value: '2K', label: '2K (Production)' },
+  { value: '4K', label: '4K (Final)' },
+] as const;
+
+// ─── API Config ──────────────────────────────────────────────
+
 let API_KEY = '';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 

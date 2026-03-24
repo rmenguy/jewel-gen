@@ -13,7 +13,7 @@ interface AppStore {
 export const useAppStore = create<AppStore>((set) => ({
   apiKey: '',
   apiKeySet: false,
-  activeEngine: 'CATALOG',
+  activeEngine: 'PRODUCTION',
   setApiKey: (key) => {
     setGeminiApiKey(key);
     set({ apiKey: key, apiKeySet: true });
