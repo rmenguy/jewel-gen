@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProductionItem, Product, CustomPreset } from '../types';
+import { ProductionItem, Product, CustomPreset, ProductionStackSession, StackLayer, StepState } from '../types';
 
 interface ProductionStore {
   queue: ProductionItem[];
@@ -25,6 +25,18 @@ interface ProductionStore {
   setBareCache: (key: string, image: string) => void;
   getBareCache: (key: string) => string | undefined;
   clearBareCache: () => void;
+
+  // Stack session state (STATE-01, STATE-02)
+  stackSession: ProductionStackSession | null;
+
+  // Stack session actions
+  createStackSession: (baseImage: string, aspectRatio: string, imageSize: string) => ProductionStackSession;
+  updateStackSession: (updates: Partial<ProductionStackSession>) => void;
+  addLayerToStack: (layer: StackLayer) => void;
+  removeLayerFromStack: (layerId: string) => void;
+  reorderStackLayers: (layerIds: string[]) => void;
+  updateStepState: (stepIndex: number, updates: Partial<StepState>) => void;
+  resetStackSession: () => void;
 }
 
 export const useProductionStore = create<ProductionStore>((set, get) => ({
@@ -89,4 +101,92 @@ export const useProductionStore = create<ProductionStore>((set, get) => ({
   setBareCache: (key, image) => set((state) => ({ bareCache: { ...state.bareCache, [key]: image } })),
   getBareCache: (key) => get().bareCache[key],
   clearBareCache: () => set({ bareCache: {} }),
+
+  // ─── Stack Session State ──────────────────────────────────────
+
+  stackSession: null,
+
+  createStackSession: (baseImage, aspectRatio, imageSize) => {
+    const session: ProductionStackSession = {
+      id: crypto.randomUUID(),
+      baseImage,
+      aspectRatio,
+      imageSize,
+      layers: [],
+      stepStates: [],
+      currentImage: null,
+      chatSession: null,
+      followUpHistory: [],
+      status: 'planning',
+      createdAt: Date.now(),
+      referenceBundle: null,
+      effectiveReferenceBundle: null,
+      excludedReferences: [],
+      validationResults: [],
+    };
+    set({ stackSession: session });
+    return session;
+  },
+
+  updateStackSession: (updates) => {
+    const current = get().stackSession;
+    if (!current) return;
+    set({ stackSession: { ...current, ...updates } });
+  },
+
+  addLayerToStack: (layer) => {
+    const current = get().stackSession;
+    if (!current) return;
+    set({
+      stackSession: {
+        ...current,
+        layers: [...current.layers, layer],
+      },
+    });
+  },
+
+  removeLayerFromStack: (layerId) => {
+    const current = get().stackSession;
+    if (!current) return;
+    const filtered = current.layers
+      .filter((l) => l.id !== layerId)
+      .map((l, i) => ({ ...l, ordinal: i }));
+    set({
+      stackSession: {
+        ...current,
+        layers: filtered,
+      },
+    });
+  },
+
+  reorderStackLayers: (layerIds) => {
+    const current = get().stackSession;
+    if (!current) return;
+    const layerMap = new Map(current.layers.map((l) => [l.id, l]));
+    const reordered = layerIds
+      .map((id) => layerMap.get(id))
+      .filter((l): l is StackLayer => l !== undefined)
+      .map((l, i) => ({ ...l, ordinal: i }));
+    set({
+      stackSession: {
+        ...current,
+        layers: reordered,
+      },
+    });
+  },
+
+  updateStepState: (stepIndex, updates) => {
+    const current = get().stackSession;
+    if (!current || stepIndex < 0 || stepIndex >= current.stepStates.length) return;
+    const updatedStepStates = [...current.stepStates];
+    updatedStepStates[stepIndex] = { ...updatedStepStates[stepIndex], ...updates };
+    set({
+      stackSession: {
+        ...current,
+        stepStates: updatedStepStates,
+      },
+    });
+  },
+
+  resetStackSession: () => set({ stackSession: null }),
 }));
