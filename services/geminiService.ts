@@ -89,7 +89,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
 export const IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
 const TEXT_MODEL = 'gemini-3-flash-preview'; // For text-only tasks (MODEL-06)
 
-function extractBase64(input: string): string {
+export function extractBase64(input: string): string {
   return input.includes('base64,') ? input.split(',')[1] : input;
 }
 
