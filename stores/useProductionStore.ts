@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProductionItem, Product, CustomPreset } from '../types';
+import { ProductionItem, Product, CustomPreset, ProductionStackSession } from '../types';
 
 interface ProductionStore {
   queue: ProductionItem[];
@@ -25,6 +25,12 @@ interface ProductionStore {
   setBareCache: (key: string, image: string) => void;
   getBareCache: (key: string) => string | undefined;
   clearBareCache: () => void;
+
+  // Production Stack session
+  stackSession: ProductionStackSession | null;
+  createStackSession: (baseImage: string, aspectRatio: string, imageSize: string) => ProductionStackSession;
+  updateStackSession: (updates: Partial<ProductionStackSession>) => void;
+  resetStackSession: () => void;
 }
 
 export const useProductionStore = create<ProductionStore>((set, get) => ({
@@ -89,4 +95,38 @@ export const useProductionStore = create<ProductionStore>((set, get) => ({
   setBareCache: (key, image) => set((state) => ({ bareCache: { ...state.bareCache, [key]: image } })),
   getBareCache: (key) => get().bareCache[key],
   clearBareCache: () => set({ bareCache: {} }),
+
+  // Production Stack session
+  stackSession: null,
+
+  createStackSession: (baseImage, aspectRatio, imageSize) => {
+    const session: ProductionStackSession = {
+      id: crypto.randomUUID(),
+      baseImage,
+      aspectRatio,
+      imageSize,
+      layers: [],
+      stepStates: [],
+      currentImage: null,
+      chatSession: null,
+      followUpHistory: [],
+      status: 'planning',
+      createdAt: Date.now(),
+      referenceBundle: null,
+      effectiveReferenceBundle: null,
+      excludedReferences: [],
+      validationResults: [],
+    };
+    set({ stackSession: session });
+    return session;
+  },
+
+  updateStackSession: (updates) =>
+    set((state) => ({
+      stackSession: state.stackSession
+        ? { ...state.stackSession, ...updates }
+        : null,
+    })),
+
+  resetStackSession: () => set({ stackSession: null }),
 }));

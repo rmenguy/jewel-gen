@@ -188,6 +188,73 @@ export interface SupabaseProduct {
   metadata: Record<string, any>;
 }
 
+// ─── Production Stack Engine ─────────────────────────────────
+
+export interface ReferenceImage {
+  id: string;
+  base64: string;
+  role: 'character' | 'object' | 'composition' | 'style';
+  label: string;
+}
+
+export interface StackLayer {
+  id: string;
+  productImage: string;
+  productName: string;
+  category: string;
+  targetZone: string;
+  order: number;
+}
+
+export interface StepState {
+  layerId: string;
+  status: 'pending' | 'executing' | 'validating' | 'completed' | 'failed';
+  resultImage?: string;
+  error?: string;
+}
+
+export interface ImageChatSession {
+  sessionId: string;
+  turns: Array<{ role: string; content: string }>;
+}
+
+export interface GenerationSnapshot {
+  stepIndex: number;
+  prompt: string;
+  resultImage: string;
+  timestamp: number;
+}
+
+export interface ReferenceBundle {
+  character: ReferenceImage[];
+  object: ReferenceImage[];
+  composition: ReferenceImage[];
+  style: ReferenceImage[];
+}
+
+export interface EffectiveBundle {
+  included: ReferenceImage[];
+  excluded: ReferenceImage[];
+}
+
+export interface ProductionStackSession {
+  id: string;
+  baseImage: string;
+  aspectRatio: string;
+  imageSize: string;
+  layers: StackLayer[];
+  stepStates: StepState[];
+  currentImage: string | null;
+  chatSession: ImageChatSession | null;
+  followUpHistory: GenerationSnapshot[];
+  status: 'planning' | 'executing' | 'completed' | 'follow-up';
+  createdAt: number;
+  referenceBundle: ReferenceBundle | null;
+  effectiveReferenceBundle: EffectiveBundle | null;
+  excludedReferences: ReferenceImage[];
+  validationResults: PixelFidelityResult[];
+}
+
 // ─── Banner Engine ───────────────────────────────────────────
 
 export interface BannerJewelry {
