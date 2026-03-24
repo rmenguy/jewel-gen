@@ -94,15 +94,14 @@ function getSizeInstruction(preset: SizePreset): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PROMPT BUILDER — RENDU JOAILLERIE ULTRA HAUT DE GAMME
+// PROMPT BUILDER — RENDU JOAILLERIE PHOTORÉALISTE
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Construit un prompt de qualité production pour le rendu de bijoux
- * photoréalistes. Chaque bloc cible un aspect spécifique du réalisme.
- *
- * Le résultat doit être indistinguable d'une vraie photo de campagne
- * joaillerie haut de gamme.
+ * Prompt dense, naturel, orienté résultat photographique.
+ * Pas de headers techniques ni de listes de règles —
+ * le modèle répond mieux à une description de ce que l'image
+ * DOIT ressembler, écrite comme un brief de directeur artistique.
  */
 export function buildLuxuryJewelryPrompt(opts: {
   layers: StackLayer[];
@@ -112,121 +111,46 @@ export function buildLuxuryJewelryPrompt(opts: {
 }): string {
   const { layers, mode, isFirstTurn = true, currentLayerIndex } = opts;
 
-  // Pour le mode séquentiel, on ne décrit que le calque courant
   const activeLayers = mode === 'sequential' && currentLayerIndex !== undefined
     ? [layers[currentLayerIndex]]
     : layers;
 
-  // ── A. PRÉSERVATION ABSOLUE DE L'IMAGE ──
-  const preservation = [
-    '== IMAGE PRESERVATION (ABSOLUTE) ==',
-    'Preserve EXACTLY and without ANY modification:',
-    '- Face, expression, eyes, skin texture, makeup',
-    '- Hair (style, color, position, strands)',
-    '- Body pose, posture, hand position',
-    '- Clothing (fabric, folds, color, texture)',
-    '- Lighting setup (direction, intensity, color temperature, shadows)',
-    '- Background (blur, color, texture, objects)',
-    '- Camera framing, angle, depth of field',
-    '- Overall color grading and photo grain',
-    'The model must look IDENTICAL to the input — not "similar", IDENTICAL.',
-  ];
-
-  // ── B. FIDÉLITÉ ABSOLUE DU BIJOU ──
-  const fidelity = [
-    '',
-    '== JEWELRY FIDELITY (ABSOLUTE) ==',
-    'Each jewelry reference image must be reproduced with EXACT fidelity:',
-    '- Precise shape, proportions, silhouette — no reinterpretation',
-    '- Exact chain structure: link type, link size, link pattern, chain width',
-    '- Pendant: exact shape, exact stone arrangement, exact setting style',
-    '- Metal: exact color (gold/silver/rose), exact finish (polished/matte/brushed)',
-    '- Stones: exact color, exact cut shape, exact number, exact arrangement',
-    '- Fine details: clasps, engravings, textures, surface patterns',
-    'DO NOT simplify, stylize, smooth, merge, or reinterpret any design element.',
-    'The jewelry in the output must be recognizable as the SAME piece from the reference.',
-  ];
-
-  // ── C. PHYSIQUE RÉALISTE (CRITIQUE) ──
-  const physics = [
-    '',
-    '== REALISTIC PHYSICS (CRITICAL) ==',
-    'The jewelry must obey real-world physics as if physically worn:',
-    '- Chain follows the natural curve of the neck and collarbone',
-    '- Chain rests ON the skin with visible contact — not floating above it',
-    '- Natural tension: slight sag between anchor points, not rigid or geometric',
-    '- Pendant hangs vertically under gravity from its attachment point',
-    '- Pendant shows real weight: slight swing, natural depth, not flat against chest',
-    '- Micro-shadows under the chain and pendant where they contact skin',
-    '- Correct perspective matching the body angle and camera position',
-    '- Depth and volume: jewelry is a 3D object, not a flat overlay',
-    'FORBIDDEN: floating jewelry, sticker effect, Photoshop overlay look, rigid geometry.',
-  ];
-
-  // ── D. INTÉGRATION VISUELLE PREMIUM ──
-  const integration = [
-    '',
-    '== VISUAL INTEGRATION (PREMIUM) ==',
-    '- Match the EXACT lighting of the scene: highlights on metal must come from the same light source as highlights on skin',
-    '- Match shadow direction and softness with existing body shadows',
-    '- Match color temperature: warm/cool cast must be consistent',
-    '- Match photo grain and sharpness: jewelry should not look "cleaner" than the rest of the image',
-    '- Match contrast and dynamic range of the photograph',
-    '- Subtle skin-metal interaction: faint warm reflection on metal from skin, faint cool reflection on skin from metal',
-    'The final result must look like the jewelry was physically present during the photoshoot.',
-    'NOT like it was added afterwards. NOT like AI generation. Like a REAL photograph.',
-  ];
-
-  // ── E. PLACEMENT ET TAILLE PAR CALQUE ──
-  const placements = activeLayers.map((layer, i) => {
+  // Description de chaque bijou avec zone et taille
+  const jewelryBrief = activeLayers.map((layer, i) => {
     const zone = getZonePlacementPrompt(layer.targetZone);
-    const size = getSizeInstruction(layer.sizePreset || 'medium');
-    return `\nJewelry ${i + 1}: "${layer.name}" (${layer.productCategory})\n${zone}\n${size}`;
-  });
+    const sizeCfg = SIZE_CONFIG[layer.sizePreset || 'medium'];
+    const sizeNote = layer.sizePreset === 'medium' || !layer.sizePreset
+      ? ''
+      : ` (${sizeCfg.promptEn})`;
+    return `- Reference image ${i + 2}: ${layer.name} (${layer.productCategory}), worn at ${layer.targetZone.replace(/-/g, ' ')}${sizeNote}. ${zone}`;
+  }).join('\n');
 
-  // ── F. STACKING (si plusieurs bijoux) ──
-  const stacking = activeLayers.length > 1 ? [
-    '',
-    '== MULTI-JEWELRY STACKING ==',
-    '- Clear visual hierarchy: shorter necklaces closer to neck, longer ones lower',
-    '- Natural spacing between each piece — no collision, no overlap of chains',
-    '- Each chain hangs independently with its own gravity and drape',
-    '- Each piece must remain individually readable and recognizable',
-    '- No fusion between pieces — distinct separation at all points',
-  ] : [];
+  // Stacking addendum
+  const stackNote = activeLayers.length > 1
+    ? '\n\nAll necklaces must be layered with clear separation — shortest closest to neck, longest falling lower. Each chain hangs independently with its own drape and gravity. No chain overlaps or merges with another.'
+    : '';
 
-  // ── G. INSTRUCTION DE MODE ──
-  const modeInstruction = mode === 'sequential'
-    ? [
-        '',
-        '== INCREMENTAL EDIT MODE ==',
-        isFirstTurn
-          ? 'The image below is the base photograph to edit.'
-          : 'Continue editing the same image from the previous turn.',
-        'Add ONLY the new jewelry piece described above.',
-        'Preserve ALL previously placed jewelry exactly as-is — do not move, resize, or alter them.',
-      ]
-    : [
-        '',
-        '== DIRECT COMPOSITION MODE ==',
-        'Image 1 below is the base model photograph.',
-        `The following ${activeLayers.length} image(s) are jewelry references — place them ALL in a single composition.`,
-      ];
+  // Mode instruction
+  const modeNote = mode === 'sequential'
+    ? isFirstTurn
+      ? '\n\nReference image 1 below is the photograph to edit. Add ONLY the described jewelry — keep every existing element untouched.'
+      : '\n\nContinue from the previous image. Add ONLY the new piece — do not alter anything already present.'
+    : `\n\nReference image 1 below is the model photograph. The next ${activeLayers.length} image(s) are the jewelry pieces to place — compose them all in a single shot.`;
 
-  // ── ASSEMBLAGE FINAL ──
-  return [
-    'Edit this image to create a professional luxury jewelry campaign photograph.',
-    '',
-    ...preservation,
-    ...fidelity,
-    ...physics,
-    ...integration,
-    ...placements,
-    ...stacking,
-    ...modeInstruction,
-    '',
-    'The final image must be indistinguishable from a real high-end jewelry photoshoot.',
-  ].join('\n');
+  return `You are a world-class jewelry retoucher working on a luxury e-commerce campaign. Your job is to place real jewelry onto a model photograph so the result is indistinguishable from an actual studio photoshoot.
+
+Study the reference jewelry image(s) carefully. Reproduce every detail with absolute precision: the exact chain link pattern, pendant shape, stone colors, metal finish, clasp style, and proportions. Do not simplify, stylize, or reinterpret any design element — the client must recognize their exact product.
+
+Place the jewelry on the model as if she wore it during the shoot. The chain must follow the real curvature of her neck and collarbones, resting naturally on skin with visible contact. It should sag gently between anchor points with realistic tension — never rigid, never floating. Any pendant must hang under gravity with real weight and depth, casting a soft micro-shadow on the chest beneath it. The jewelry is a three-dimensional object with volume and perspective matching the camera angle — not a flat overlay.
+
+Match the photograph's lighting exactly: metal highlights must come from the same light source illuminating the skin. Match the shadow direction, color temperature, contrast, depth of field, and film grain. The jewelry should look like it belongs in the same physical space, captured by the same camera at the same moment. Add subtle light interactions — faint warm skin reflections on polished metal, gentle cool metal reflections on nearby skin.
+
+Do not modify the model in any way: her face, expression, skin, hair, pose, clothing, the background, and the overall color grading must remain pixel-identical to the input.
+
+Jewelry to place:
+${jewelryBrief}${stackNote}${modeNote}
+
+Deliver a single final photograph that looks like it came straight from a Cartier or Tiffany campaign shoot — not like AI, not like a composite, not like retouching. Like reality.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
