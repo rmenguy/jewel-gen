@@ -39,28 +39,6 @@ Les images sont la priorité absolue. Pour chaque produit, tu dois trouver l'URL
 - Si le site bloque l'accès direct, utilise Google Search pour trouver l'image correspondante via l'onglet Images.
 `;
 
-// ─── Output Format Constants ─────────────────────────────────
-
-export const ASPECT_RATIOS = [
-  { value: '1:1', label: 'Square 1:1' },
-  { value: '2:3', label: 'Portrait 2:3' },
-  { value: '3:2', label: 'Landscape 3:2' },
-  { value: '3:4', label: 'Portrait 3:4' },
-  { value: '4:3', label: 'Landscape 4:3' },
-  { value: '4:5', label: 'Social Portrait' },
-  { value: '5:4', label: 'Social Landscape' },
-  { value: '9:16', label: 'Story / Vertical' },
-  { value: '16:9', label: 'Banner / Wide' },
-  { value: '21:9', label: 'Ultra Wide' },
-] as const;
-
-export const IMAGE_SIZES = [
-  { value: '512', label: '512px (Draft)' },
-  { value: '1K', label: '1K (Preview)' },
-  { value: '2K', label: '2K (Production)' },
-  { value: '4K', label: '4K (Final)' },
-] as const;
-
 // ─── API Config ──────────────────────────────────────────────
 
 let API_KEY = '';
@@ -72,66 +50,6 @@ export function setApiKey(key: string) {
 
 export function getApiKey(): string {
     return API_KEY;
-}
-
-/**
- * Auto-assign a target zone based on jewelry category.
- */
-export function autoAssignZone(category: string): TargetZone {
-    const map: Record<string, TargetZone> = {
-        collier: 'collarbone',
-        sautoir: 'mid-chest',
-        boucles: 'ear-lobe',
-        bracelet: 'wrist',
-        bague: 'finger',
-        pendentif: 'upper-chest',
-        broche: 'upper-chest',
-    };
-    return map[category.toLowerCase()] ?? 'collarbone';
-}
-
-/**
- * Call the Gemini API directly from the browser (CORS supported by Google).
- */
-async function callGeminiAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
-    const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
-    const body = JSON.stringify(requestBody);
-    console.log(`[GEMINI] Calling ${model}, body size: ${body.length}`);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
-}
-
-/**
- * Call Imagen 4 via :predict endpoint directly from the browser.
- */
-async function callImagenAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
-    const url = `${GEMINI_BASE}/models/${model}:predict?key=${API_KEY}`;
-    const body = JSON.stringify(requestBody);
-    console.log(`[IMAGEN] Calling ${model}, body size: ${body.length}`);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
 }
 
 /**
