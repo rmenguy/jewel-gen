@@ -201,3 +201,115 @@ export interface BannerJewelry {
   blueprint?: JewelryBlueprint;
   isAnalyzing?: boolean;
 }
+
+// ─── Unified Image Service & Reference Architecture ───────────
+
+export type ReferenceKind = 'character' | 'object' | 'composition' | 'style';
+
+export interface ReferenceImage {
+  id: string;
+  kind: ReferenceKind;
+  role: string;          // Human-readable: "locked base scene", "jewelry fidelity", etc.
+  base64: string;        // Raw base64 (no data: prefix)
+  mimeType: string;
+  priority: number;      // Lower = higher priority (0 = must include)
+}
+
+export interface ReferenceBundle {
+  characterReferences: ReferenceImage[];  // Max 4
+  objectReferences: ReferenceImage[];     // Max 10
+  compositionReferences: ReferenceImage[]; // Counts toward object budget
+  styleReferences: ReferenceImage[];       // Counts toward object budget
+}
+
+export interface EffectiveBundle {
+  included: ReferenceImage[];   // Ordered for API request
+  excluded: ReferenceImage[];   // Dropped due to budget
+  budget: {
+    character: { used: number; max: number };
+    object: { used: number; max: number };
+  };
+}
+
+export interface ParsedImageResponse {
+  images: Array<{ mimeType: string; data: string; dataUri: string }>;
+  text: string | null;
+  thoughtSignatures: Array<{ partIndex: number; signature: string }>;
+  rawParts: any[]; // For echoing back in multi-turn
+}
+
+export interface ImageGenerationConfig {
+  responseModalities?: string[];
+  imageConfig?: {
+    aspectRatio?: string;
+    imageSize?: string;
+  };
+}
+
+export interface ImageChatSession {
+  history: Array<{ role: 'user' | 'model'; parts: any[] }>;
+  model: string;
+  generationConfig: ImageGenerationConfig;
+}
+
+// ─── Production Stack Engine Types ──────────────────────────────
+
+export type TargetZone =
+  | 'neck-base' | 'collarbone' | 'upper-chest' | 'mid-chest' | 'navel'
+  | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
+
+export interface StackLayer {
+  id: string;
+  ordinal: number;
+  name: string;
+  productImage: string;        // base64 data URI
+  productCategory: string;
+  targetZone: TargetZone;
+  blueprint?: JewelryBlueprint;
+  dimensions?: ProductDimensions;
+}
+
+export interface GenerationSnapshot {
+  stepIndex: number;
+  layerId: string;
+  prompt: string;
+  referencesUsed: ReferenceImage[];
+  referencesExcluded: ReferenceImage[];
+  generationConfig: ImageGenerationConfig;
+  inputImage: string;
+  outputImage: string;
+  validation: PixelFidelityResult | null;
+  timestamp: number;
+  attemptNumber: number;
+}
+
+export type StepStatus = 'pending' | 'executing' | 'validating' | 'completed' | 'failed' | 'retrying';
+
+export interface StepState {
+  layerId: string;
+  status: StepStatus;
+  currentAttempt: number;
+  maxAttempts: number;
+  snapshots: GenerationSnapshot[];
+  approvedSnapshotIndex: number | null;
+  error?: string;
+}
+
+export interface ProductionStackSession {
+  id: string;
+  baseImage: string;
+  aspectRatio: string;
+  imageSize: string;
+  layers: StackLayer[];
+  stepStates: StepState[];
+  currentImage: string | null;
+  chatSession: ImageChatSession | null;
+  followUpHistory: GenerationSnapshot[];
+  status: 'planning' | 'executing' | 'completed' | 'follow-up';
+  createdAt: number;
+  // STATE-01 contract fields — nullable, populated by engine during execution
+  referenceBundle: ReferenceBundle | null;
+  effectiveReferenceBundle: EffectiveBundle | null;
+  excludedReferences: ReferenceImage[];
+  validationResults: PixelFidelityResult[];
+}
