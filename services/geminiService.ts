@@ -50,49 +50,7 @@ export function getApiKey(): string {
     return API_KEY;
 }
 
-/**
- * Call the Gemini API directly from the browser (CORS supported by Google).
- */
-async function callGeminiAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
-    const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
-    const body = JSON.stringify(requestBody);
-    console.log(`[GEMINI] Calling ${model}, body size: ${body.length}`);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
-}
-
-/**
- * Call Imagen 4 via :predict endpoint directly from the browser.
- */
-async function callImagenAPI(model: string, requestBody: Record<string, unknown>): Promise<any> {
-    const url = `${GEMINI_BASE}/models/${model}:predict?key=${API_KEY}`;
-    const body = JSON.stringify(requestBody);
-    console.log(`[IMAGEN] Calling ${model}, body size: ${body.length}`);
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
-}
+// Legacy model-specific API callers removed — all calls now go through callUnifiedAPI
 
 /**
  * Enhanced retry logic with exponential backoff and jitter.
@@ -141,7 +99,7 @@ async function callUnifiedAPI(
 ): Promise<any> {
   const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
   const body = JSON.stringify(requestBody);
-  console.log(`[GEMINI-UNIFIED] Calling ${model}, body size: ${body.length}`);
+  console.log(`[GEMINI] Calling ${model}, body size: ${body.length}`);
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -354,7 +312,7 @@ export const continueImageChatSession = async (
 
 export const extractShopifyCatalog = async (storeUrl: string): Promise<ExtractionResult> => {
   return withRetry(async () => {
-    const response = await callGeminiAPI('gemini-3-flash-preview', {
+    const response = await callUnifiedAPI(TEXT_MODEL, {
       contents: [{
         parts: [{
           text: `${CATALOG_SYSTEM_INSTRUCTION}
@@ -555,18 +513,17 @@ TECHNICAL: Shot on Hasselblad H6D loaded with Kodak Portra 400 film. Lens 80mm f
       prompt = parts.join('\n');
     }
 
-    const response = await callImagenAPI('imagen-4.0-ultra-generate-001', {
-      instances: [{ prompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: "3:4",
-        personGeneration: "allow_adult"
+    const response = await callUnifiedAPI(IMAGE_MODEL, {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        imageConfig: { aspectRatio: '3:4' },
       }
     });
 
-    const prediction = response.predictions?.[0];
-    if (prediction?.bytesBase64Encoded) {
-      return `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`;
+    const parsed = parseImageResponse(response);
+    if (parsed.images.length > 0) {
+      return parsed.images[0].dataUri;
     }
     throw new Error("L'IA n'a pas retourné d'image.");
   });
@@ -602,9 +559,7 @@ export const generateMannequinFromReference = async (
     const mimeType = referenceImageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
         : referenceImageBase64.startsWith('data:image/webp') ? 'image/webp'
         : 'image/png';
-    const imageData = referenceImageBase64.includes('base64,')
-        ? referenceImageBase64.split(',')[1]
-        : referenceImageBase64;
+    const imageData = extractBase64(referenceImageBase64);
 
     const analyzePromptText = `Analyze this fashion portrait photo and describe its visual style as a concise technical list. Be specific and photographic. 2 sentences per item max.
 
@@ -618,10 +573,10 @@ export const generateMannequinFromReference = async (
     // ── STEP 1: Extract style from reference photo (TEXT only, no image output) ──
     // Try multiple models — preview models can be unstable or renamed by Google.
     let styleNotes = '';
-    const analysisModels = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-3-pro-image-preview'];
+    const analysisModels = [TEXT_MODEL, 'gemini-2.0-flash'];
     for (const model of analysisModels) {
         try {
-            const analyzeResponse = await callGeminiAPI(model, {
+            const analyzeResponse = await callUnifiedAPI(model, {
                 contents: [{
                     parts: [
                         { text: analyzePromptText },
@@ -714,20 +669,23 @@ BODY: ${bodyPrompt}.${criteria.customPrompt?.trim() ? `\nADDITIONAL: ${criteria.
 
     try {
         return await withRetry(async () => {
-            const imagenResponse = await callImagenAPI('imagen-4.0-ultra-generate-001', {
-                instances: [{ prompt: generationPrompt }],
-                parameters: { sampleCount: 1, aspectRatio: '3:4', personGeneration: 'allow_adult' },
+            const genResponse = await callUnifiedAPI(IMAGE_MODEL, {
+                contents: [{ parts: [{ text: generationPrompt }] }],
+                generationConfig: {
+                    responseModalities: ['IMAGE', 'TEXT'],
+                    imageConfig: { aspectRatio: '3:4' },
+                },
             });
-            const prediction = imagenResponse.predictions?.[0];
-            if (prediction?.bytesBase64Encoded) {
-                return `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`;
+            const parsed = parseImageResponse(genResponse);
+            if (parsed.images.length > 0) {
+                return parsed.images[0].dataUri;
             }
-            // Treat empty predictions as a 500 so withRetry will retry it
-            throw new Error('500: Imagen returned no predictions — retrying');
+            // Treat empty response as a 500 so withRetry will retry it
+            throw new Error('500: Model returned no image — retrying');
         });
     } catch (err) {
-        // Final safety net: if Imagen repeatedly returns nothing, use standard generation
-        console.warn('[REF-GEN] Imagen failed after retries. Falling back to standard generation.', err);
+        // Final safety net: if model repeatedly returns nothing, use standard generation
+        console.warn('[REF-GEN] Generation failed after retries. Falling back to standard generation.', err);
         return generateMannequin(criteria, overrideParams);
     }
 };
@@ -767,9 +725,7 @@ export const generateBookShot = async (
     anglePrompt: string
 ): Promise<string> => {
     return withRetry(async () => {
-        const imageData = referenceImageBase64.includes('base64,')
-            ? referenceImageBase64.split(',')[1]
-            : referenceImageBase64;
+        const imageData = extractBase64(referenceImageBase64);
 
         const prompt = `You are generating a professional fashion model photo book. The reference image shows the model. Generate a NEW photo of THIS EXACT SAME person (identical face, identical hair color and style, identical skin tone, identical clothing) but from a different angle and framing.
 
@@ -784,15 +740,14 @@ TECHNICAL: Professional studio photography, Hasselblad quality, soft natural lig
             { inlineData: { mimeType: 'image/png', data: imageData } },
         ];
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
 
         throw new Error('No book shot image returned by the API.');
@@ -930,13 +885,13 @@ export const generateProductionPhoto = async (
                     // --- Build parts ---
                     const parts: any[] = [{ text: prompt }];
                     if (mannequinBase64) {
-                        const mannequinData = mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64;
+                        const mannequinData = extractBase64(mannequinBase64);
                         parts.push({ inlineData: { mimeType: 'image/png', data: mannequinData } });
                     }
                     parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
 
                     console.log(`[PIPELINE-${label}] Single-pass generation`);
-                    const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+                    const response = await callUnifiedAPI(IMAGE_MODEL, {
                         contents: [{ parts }],
                         generationConfig: {
                             responseModalities: ['IMAGE', 'TEXT'],
@@ -944,13 +899,8 @@ export const generateProductionPhoto = async (
                         }
                     });
 
-                    let generatedImage: string | null = null;
-                    for (const part of response.candidates?.[0]?.content?.parts || []) {
-                        if (part.inlineData) {
-                            generatedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            break;
-                        }
-                    }
+                    const parsed = parseImageResponse(response);
+                    const generatedImage = parsed.images[0]?.dataUri || null;
                     if (!generatedImage) throw new Error(`No image generated (${label})`);
                     console.log(`[PIPELINE-${label}] Generation complete`);
 
@@ -1021,20 +971,18 @@ export const _generateProductionPhotoFull = async (
 
         const parts: any[] = [{ text: prompt }];
         if (mannequinBase64) {
-            const d = mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64;
+            const d = extractBase64(mannequinBase64);
             parts.push({ inlineData: { mimeType: 'image/png', data: d } });
         }
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } }
         });
 
-        let dressedImage: string | null = null;
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) { dressedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`; break; }
-        }
+        const parsedResp = parseImageResponse(response);
+        let dressedImage: string | null = parsedResp.images[0]?.dataUri || null;
         if (!dressedImage) throw new Error("Aucune image générée.");
 
         // Composite + harmonize
@@ -1052,10 +1000,10 @@ export const _generateProductionPhotoFull = async (
             for (let i = 0; i < 3; i++) {
                 const d = px.diagnosis;
                 const cp = d === 'shape' ? "Fix jewelry SHAPE to match reference." : d === 'color' ? `Fix jewelry COLOR: ${blueprint.colorDetails}.` : "Fix jewelry to match reference.";
-                const cd = cur.includes('base64,') ? cur.split(',')[1] : cur;
-                const cr = await callGeminiAPI('gemini-3-pro-image-preview', { contents: [{ parts: [{ text: cp }, { inlineData: { mimeType: 'image/png', data: cd } }, { inlineData: { mimeType: 'image/jpeg', data: productBase64 } }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } } });
-                let ci: string | null = null;
-                for (const p of cr.candidates?.[0]?.content?.parts || []) { if (p.inlineData) { ci = `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`; break; } }
+                const cd = extractBase64(cur);
+                const cr = await callUnifiedAPI(IMAGE_MODEL, { contents: [{ parts: [{ text: cp }, { inlineData: { mimeType: 'image/png', data: cd } }, { inlineData: { mimeType: 'image/jpeg', data: productBase64 } }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } } });
+                const crParsed = parseImageResponse(cr);
+                let ci: string | null = crParsed.images[0]?.dataUri || null;
                 if (!ci) continue;
                 const cs = await segmentJewelry(ci);
                 const cc = await cropFromSegmentation(ci, cs);
@@ -1083,7 +1031,7 @@ export const addJewelryToExisting = async (
 ): Promise<string> => {
     console.log('[REFINE] Adding jewelry to existing image');
     return withRetry(async () => {
-        const productData = productBase64.includes('base64,') ? productBase64.split(',')[1] : productBase64;
+        const productData = extractBase64(productBase64);
         const productDataUri = productBase64.startsWith('data:') ? productBase64 : `data:image/jpeg;base64,${productData}`;
 
         // --- Step 1: Dress pass — add new jewelry onto existing image ---
@@ -1138,14 +1086,14 @@ export const addJewelryToExisting = async (
 
                 console.log(`[REFINE-PIXEL] Correction attempt ${attempt + 1}/3 — diagnosis: ${diagnosis}`);
 
-                const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
+                const currentData = extractBase64(currentImage);
                 const correctionParts: any[] = [
                     { text: correctionPrompt },
                     { inlineData: { mimeType: 'image/png', data: currentData } },
                     { inlineData: { mimeType: 'image/jpeg', data: productData } },
                 ];
 
-                const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                const correctionResponse = await callUnifiedAPI(IMAGE_MODEL, {
                     contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
@@ -1153,13 +1101,8 @@ export const addJewelryToExisting = async (
                     }
                 });
 
-                let correctedImage: string | null = null;
-                for (const part of correctionResponse.candidates?.[0]?.content?.parts || []) {
-                    if (part.inlineData) {
-                        correctedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                        break;
-                    }
-                }
+                const corrParsed = parseImageResponse(correctionResponse);
+                let correctedImage: string | null = corrParsed.images[0]?.dataUri || null;
 
                 if (!correctedImage) continue;
 
@@ -1312,7 +1255,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
             parts.push({
                 inlineData: {
                     mimeType: 'image/png',
-                    data: mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64
+                    data: extractBase64(mannequinBase64)
                 }
             });
         }
@@ -1331,7 +1274,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
         }
 
         console.log('[STACK] Calling Gemini API for stacking');
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1343,12 +1286,8 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
         });
 
         const extractImage = (resp: any): string | null => {
-            for (const part of resp.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                }
-            }
-            return null;
+            const p = parseImageResponse(resp);
+            return p.images[0]?.dataUri || null;
         };
 
         let candidateImage = extractImage(response);
@@ -1398,7 +1337,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
 
                 console.log(`[STACK-PIXEL] Correction attempt ${attempt + 1}/3 — diagnosis: ${diagnosis}`);
 
-                const currentData = currentImage.includes('base64,') ? currentImage.split(',')[1] : currentImage;
+                const currentData = extractBase64(currentImage);
                 const correctionParts: any[] = [
                     { text: correctionPrompt },
                     { inlineData: { mimeType: 'image/png', data: currentData } },
@@ -1408,7 +1347,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
                     correctionParts.push({ inlineData: { mimeType: 'image/jpeg', data: pm.base64 } });
                 }
 
-                const correctionResponse = await callGeminiAPI('gemini-3-pro-image-preview', {
+                const correctionResponse = await callUnifiedAPI(IMAGE_MODEL, {
                     contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
@@ -1458,9 +1397,7 @@ export const analyzeProductionReference = async (
     const mimeType = imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
         : imageBase64.startsWith('data:image/webp') ? 'image/webp'
         : 'image/png';
-    const imageData = imageBase64.includes('base64,')
-        ? imageBase64.split(',')[1]
-        : imageBase64;
+    const imageData = extractBase64(imageBase64);
 
     const promptMap: Record<ExtractionLevel, string> = {
         'scene-pose-style': `You are a professional photography director. Analyze this jewelry/fashion production photo and write a PRODUCTION DIRECTIVE that could recreate this exact scene with a DIFFERENT model wearing DIFFERENT jewelry.
@@ -1516,11 +1453,11 @@ Write as a detailed, actionable production directive using imperative language. 
 
     const analysisPrompt = promptMap[extractionLevel];
     let extractedText = '';
-    const analysisModels = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-3-pro-image-preview'];
+    const analysisModels = [TEXT_MODEL, 'gemini-2.0-flash'];
 
     for (const model of analysisModels) {
         try {
-            const response = await callGeminiAPI(model, {
+            const response = await callUnifiedAPI(model, {
                 contents: [{
                     parts: [
                         { text: analysisPrompt },
@@ -1575,7 +1512,7 @@ export const generateBareMannequin = async (
         prompt += `CRITICAL: The model must NOT wear ANY jewelry whatsoever. Bare skin on neck, ears, wrists, fingers. No necklace, no earrings, no rings, no bracelets, no accessories. `;
         prompt += `SCENE: ${artisticDirection}. QUALITY: 8K hyper-realistic rendering, ultra-detailed.`;
 
-        const imageData = mannequinBase64.includes('base64,') ? mannequinBase64.split(',')[1] : mannequinBase64;
+        const imageData = extractBase64(mannequinBase64);
 
         const parts: any[] = [
             { text: prompt },
@@ -1587,7 +1524,7 @@ export const generateBareMannequin = async (
             },
         ];
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1595,10 +1532,9 @@ export const generateBareMannequin = async (
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
         throw new Error('No image generated for bare mannequin.');
     });
@@ -1653,8 +1589,8 @@ export const dressWithJewelry = async (
 
         prompt += `4K RESOLUTION. Do NOT alter the model's face, body, hair, or clothing — ONLY add the jewelry.`;
 
-        const bareData = bareBase64.includes('base64,') ? bareBase64.split(',')[1] : bareBase64;
-        const productData = productBase64.includes('base64,') ? productBase64.split(',')[1] : productBase64;
+        const bareData = extractBase64(bareBase64);
+        const productData = extractBase64(productBase64);
 
         const parts: any[] = [
             { text: prompt },
@@ -1672,7 +1608,7 @@ export const dressWithJewelry = async (
             },
         ];
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1680,10 +1616,9 @@ export const dressWithJewelry = async (
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
         throw new Error('No image generated for jewelry dressing.');
     });
@@ -1712,8 +1647,8 @@ CRITICAL RULES:
 7. If you see traces of a previous/different jewelry underneath, ERASE them completely — only the composited jewelry should be visible
 8. 4K RESOLUTION output`;
 
-        const compositedData = compositedBase64.includes('base64,') ? compositedBase64.split(',')[1] : compositedBase64;
-        const bareData = bareBase64.includes('base64,') ? bareBase64.split(',')[1] : bareBase64;
+        const compositedData = extractBase64(compositedBase64);
+        const bareData = extractBase64(bareBase64);
 
         const parts: any[] = [
             { text: prompt },
@@ -1721,7 +1656,7 @@ CRITICAL RULES:
             { inlineData: { mimeType: 'image/png', data: bareData } },
         ];
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1729,10 +1664,9 @@ CRITICAL RULES:
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
         throw new Error('No image generated for jewelry harmonization.');
     });
@@ -1750,10 +1684,10 @@ export const segmentJewelry = async (
     const mimeType = imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
         : imageBase64.startsWith('data:image/webp') ? 'image/webp'
         : 'image/png';
-    const imageData = imageBase64.includes('base64,') ? imageBase64.split(',')[1] : imageBase64;
+    const imageData = extractBase64(imageBase64);
 
     try {
-        const response = await callGeminiAPI('gemini-3-flash-preview', {
+        const response = await callUnifiedAPI(TEXT_MODEL, {
             contents: [{
                 parts: [
                     {
@@ -1800,9 +1734,7 @@ export const segmentJewelry = async (
 export const analyzeJewelryProduct = async (
     productImageBase64: string
 ): Promise<JewelryBlueprint> => {
-    const imageData = productImageBase64.includes('base64,')
-        ? productImageBase64.split(',')[1]
-        : productImageBase64;
+    const imageData = extractBase64(productImageBase64);
     const mimeType = productImageBase64.startsWith('data:image/jpeg') ? 'image/jpeg'
         : productImageBase64.startsWith('data:image/webp') ? 'image/webp'
         : 'image/png';
@@ -1825,7 +1757,7 @@ CRITICAL: Be EXTREMELY specific about shapes. If stones are square, say SQUARE. 
 
 Return ONLY the JSON, no markdown fences.`;
 
-    const response = await callGeminiAPI('gemini-3-flash-preview', {
+    const response = await callUnifiedAPI(TEXT_MODEL, {
         contents: [{
             parts: [
                 { text: prompt },
@@ -2004,9 +1936,7 @@ export const refineMannequinImage = async (
             {
                 inlineData: {
                     mimeType: 'image/png',
-                    data: currentImageBase64.includes('base64,')
-                        ? currentImageBase64.split(',')[1]
-                        : currentImageBase64,
+                    data: extractBase64(currentImageBase64),
                 },
             },
         ];
@@ -2016,24 +1946,21 @@ export const refineMannequinImage = async (
             parts.push({
                 inlineData: {
                     mimeType: 'image/jpeg',
-                    data: parameters.garmentBase64.includes('base64,')
-                        ? parameters.garmentBase64.split(',')[1]
-                        : parameters.garmentBase64,
+                    data: extractBase64(parameters.garmentBase64),
                 },
             });
         }
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
 
         throw new Error('No refined image returned by the API.');
@@ -2050,11 +1977,9 @@ export const freeformEditImage = async (
 ): Promise<string> => {
     console.log('[FREEFORM] Editing image with prompt:', userPrompt.substring(0, 80));
     return withRetry(async () => {
-        const imageData = currentImageBase64.includes('base64,')
-            ? currentImageBase64.split(',')[1]
-            : currentImageBase64;
+        const imageData = extractBase64(currentImageBase64);
 
-        const response = await callGeminiAPI('gemini-3-pro-image-preview', {
+        const response = await callUnifiedAPI(IMAGE_MODEL, {
             contents: [{ parts: [
                 { text: `You are editing a fashion/jewelry photo. Follow the user's instruction precisely. Keep everything else EXACTLY identical (face, body, pose, lighting, background) unless told otherwise.\n\nINSTRUCTION: ${userPrompt}` },
                 { inlineData: { mimeType: 'image/png', data: imageData } },
@@ -2065,10 +1990,9 @@ export const freeformEditImage = async (
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
+        const parsed = parseImageResponse(response);
+        if (parsed.images.length > 0) {
+            return parsed.images[0].dataUri;
         }
         throw new Error('No edited image returned by the API.');
     });
@@ -2102,9 +2026,7 @@ export const applyBatchRefinements = async (
 
     console.log('[REFINE] Prompt:', prompt);
 
-    const imageData = currentImageBase64.includes('base64,')
-        ? currentImageBase64.split(',')[1]
-        : currentImageBase64;
+    const imageData = extractBase64(currentImageBase64);
 
     console.log('[REFINE] Image data size:', Math.round(imageData.length / 1024), 'KB');
 
@@ -2114,24 +2036,14 @@ export const applyBatchRefinements = async (
     ];
 
     if (selections.outfitBase64) {
-        const outfitData = selections.outfitBase64.includes('base64,')
-            ? selections.outfitBase64.split(',')[1]
-            : selections.outfitBase64;
+        const outfitData = extractBase64(selections.outfitBase64);
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: outfitData } });
     }
 
     if (selections.hairReferenceBase64) {
-        const hairData = selections.hairReferenceBase64.includes('base64,')
-            ? selections.hairReferenceBase64.split(',')[1]
-            : selections.hairReferenceBase64;
+        const hairData = extractBase64(selections.hairReferenceBase64);
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: hairData } });
     }
-
-    // Try multiple models — some may not be available for all API keys
-    const MODELS = [
-        'gemini-3-flash-preview',
-        'gemini-3-pro-image-preview',
-    ];
 
     const requestBody = {
         contents: [{ parts }],
@@ -2140,27 +2052,16 @@ export const applyBatchRefinements = async (
         },
     };
 
-    let lastError = '';
-    for (const model of MODELS) {
-        console.log(`[REFINE] Trying model: ${model}`);
-        try {
-            const response = await callGeminiAPI(model, requestBody);
+    console.log(`[REFINE] Calling ${IMAGE_MODEL}`);
+    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
 
-            for (const part of response.candidates?.[0]?.content?.parts || []) {
-                if (part.inlineData) {
-                    console.log(`[REFINE] Success with ${model}, mime:`, part.inlineData.mimeType);
-                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                }
-            }
-            lastError = `${model}: no image in response`;
-        } catch (err: any) {
-            lastError = `${model}: ${err.message || err}`;
-            console.warn(`[REFINE] ${model} failed:`, lastError);
-            continue;
-        }
+    const parsed = parseImageResponse(response);
+    if (parsed.images.length > 0) {
+        console.log(`[REFINE] Success with ${IMAGE_MODEL}, mime:`, parsed.images[0].mimeType);
+        return parsed.images[0].dataUri;
     }
 
-    throw new Error(`Refinement failed on all models. Last: ${lastError.substring(0, 150)}`);
+    throw new Error(`Refinement failed: no image in response`);
 };
 
 // ─── Banner Engine ───────────────────────────────────────────
@@ -2186,20 +2087,17 @@ export async function generateBannerMannequin(
 
   // Identity photos first
   for (const photo of identityPhotos) {
-    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(photo) } });
   }
 
   // Pose reference (if any)
   if (poseReference) {
-    const raw = poseReference.includes('base64,') ? poseReference.split(',')[1] : poseReference;
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(poseReference) } });
   }
 
   // Background image (if any)
   if (backgroundImage) {
-    const raw = backgroundImage.includes('base64,') ? backgroundImage.split(',')[1] : backgroundImage;
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(backgroundImage) } });
   }
 
   // Build image reference descriptions for the prompt
@@ -2258,12 +2156,11 @@ OUTPUT FORMAT: WIDE LANDSCAPE 16:9 banner format. This is a website hero banner 
   };
 
   return withRetry(async () => {
-    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
+    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
+    const parsed = parseImageResponse(response);
+    if (parsed.images.length > 0) {
+      return parsed.images[0].dataUri;
     }
     throw new Error('No image in banner mannequin response');
   });
@@ -2282,17 +2179,14 @@ export async function addSingleJewelryToBanner(
   const parts: any[] = [];
 
   // Image 1: current working image (mannequin + any previously placed jewelry)
-  const workingRaw = workingImage.includes('base64,') ? workingImage.split(',')[1] : workingImage;
-  parts.push({ inlineData: { mimeType: 'image/png', data: workingRaw } });
+  parts.push({ inlineData: { mimeType: 'image/png', data: extractBase64(workingImage) } });
 
   // Image 2: the jewelry piece to add
-  const jewelryRaw = jewelry.imageBase64.includes('base64,') ? jewelry.imageBase64.split(',')[1] : jewelry.imageBase64;
-  parts.push({ inlineData: { mimeType: 'image/jpeg', data: jewelryRaw } });
+  parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(jewelry.imageBase64) } });
 
   // Images 3+: identity photos for reference
   for (const photo of identityPhotos) {
-    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(photo) } });
   }
 
   // Build dimension anchors for this piece
@@ -2344,11 +2238,10 @@ QUALITY: 8K hyper-realistic, ultra-detailed.`;
   };
 
   return withRetry(async () => {
-    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
+    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const parsed = parseImageResponse(response);
+    if (parsed.images.length > 0) {
+      return parsed.images[0].dataUri;
     }
     throw new Error('No image in addSingleJewelryToBanner response');
   });
@@ -2370,13 +2263,11 @@ export async function refuseBannerIdentity(
   const parts: any[] = [];
 
   // Image 1: current working image (with jewelry but drifted face)
-  const workingRaw = workingImage.includes('base64,') ? workingImage.split(',')[1] : workingImage;
-  parts.push({ inlineData: { mimeType: 'image/png', data: workingRaw } });
+  parts.push({ inlineData: { mimeType: 'image/png', data: extractBase64(workingImage) } });
 
   // Images 2+: identity reference photos
   for (const photo of identityPhotos) {
-    const raw = photo.includes('base64,') ? photo.split(',')[1] : photo;
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: raw } });
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(photo) } });
   }
 
   const prompt = `IDENTITY CORRECTION TASK.
@@ -2412,11 +2303,10 @@ QUALITY: 8K hyper-realistic, maintain banner format.`;
   };
 
   return withRetry(async () => {
-    const response = await callGeminiAPI('gemini-3-pro-image-preview', requestBody);
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
+    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const parsed = parseImageResponse(response);
+    if (parsed.images.length > 0) {
+      return parsed.images[0].dataUri;
     }
     throw new Error('No image in refuseBannerIdentity response');
   });
