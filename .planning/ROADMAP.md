@@ -28,11 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Service exposes named functions (generateImageFromPrompt, editImageFromPrompt, editImageWithReferences, createImageChatSession, continueImageChatSession) that any engine can call
   4. A caller can pass a ReferenceBundle with up to 14 images (4 character + 10 object) and the service deterministically orders, prioritizes, and enforces the budget -- dropping excess references by priority
   5. The existing iterative stacking workflow still produces results at least as good as before the refactor (baseline preserved)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Types, model config, and reference architecture
-- [ ] 01-02: Unified image service implementation and old model cleanup
+- [ ] 01-01-PLAN.md -- Reference architecture types, model constant, unified API caller, response parser, budget enforcement, and 5 named service functions
+- [ ] 01-02-PLAN.md -- Migrate all 24 image functions to unified service, delete old model code, hide Banner tab
 
 ### Phase 2: Production Stack Engine
 **Goal**: Users can run a complete production stack session -- lock a base image, build an ordered jewelry plan, execute progressive placement with per-step validation, retry individual steps, and make follow-up edits
