@@ -116,63 +116,63 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODEL-01 | — | Pending |
-| MODEL-02 | — | Pending |
-| MODEL-03 | — | Pending |
-| MODEL-04 | — | Pending |
-| MODEL-05 | — | Pending |
-| MODEL-06 | — | Pending |
-| MODEL-07 | — | Pending |
-| REF-01 | — | Pending |
-| REF-02 | — | Pending |
-| REF-03 | — | Pending |
-| REF-04 | — | Pending |
-| REF-05 | — | Pending |
-| REF-06 | — | Pending |
-| REF-07 | — | Pending |
-| STACK-01 | — | Pending |
-| STACK-02 | — | Pending |
-| STACK-03 | — | Pending |
-| STACK-04 | — | Pending |
-| STACK-05 | — | Pending |
-| STACK-06 | — | Pending |
-| STACK-07 | — | Pending |
-| STACK-08 | — | Pending |
-| STACK-09 | — | Pending |
-| STACK-10 | — | Pending |
-| STACK-11 | — | Pending |
-| STACK-12 | — | Pending |
-| STACK-13 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| UI-04 | — | Pending |
-| UI-05 | — | Pending |
-| UI-06 | — | Pending |
-| UI-07 | — | Pending |
-| UI-08 | — | Pending |
-| OPS-01 | — | Pending |
-| OPS-02 | — | Pending |
-| OPS-03 | — | Pending |
-| MANN-01 | — | Pending |
-| MANN-02 | — | Pending |
-| MANN-03 | — | Pending |
-| MANN-04 | — | Pending |
-| BATCH-01 | — | Pending |
-| BATCH-02 | — | Pending |
-| STATE-01 | — | Pending |
-| STATE-02 | — | Pending |
-| STATE-03 | — | Pending |
-| STATE-04 | — | Pending |
-| CLEAN-01 | — | Pending |
-| CLEAN-02 | — | Pending |
-| CLEAN-03 | — | Pending |
+| MODEL-01 | Phase 1 | Pending |
+| MODEL-02 | Phase 1 | Pending |
+| MODEL-03 | Phase 1 | Pending |
+| MODEL-04 | Phase 1 | Pending |
+| MODEL-05 | Phase 1 | Pending |
+| MODEL-06 | Phase 1 | Pending |
+| MODEL-07 | Phase 1 | Pending |
+| REF-01 | Phase 1 | Pending |
+| REF-02 | Phase 1 | Pending |
+| REF-03 | Phase 1 | Pending |
+| REF-04 | Phase 1 | Pending |
+| REF-05 | Phase 1 | Pending |
+| REF-06 | Phase 1 | Pending |
+| REF-07 | Phase 1 | Pending |
+| STACK-01 | Phase 2 | Pending |
+| STACK-02 | Phase 2 | Pending |
+| STACK-03 | Phase 2 | Pending |
+| STACK-04 | Phase 2 | Pending |
+| STACK-05 | Phase 2 | Pending |
+| STACK-06 | Phase 2 | Pending |
+| STACK-07 | Phase 2 | Pending |
+| STACK-08 | Phase 2 | Pending |
+| STACK-09 | Phase 2 | Pending |
+| STACK-10 | Phase 2 | Pending |
+| STACK-11 | Phase 2 | Pending |
+| STACK-12 | Phase 2 | Pending |
+| STACK-13 | Phase 2 | Pending |
+| UI-01 | Phase 3 | Pending |
+| UI-02 | Phase 3 | Pending |
+| UI-03 | Phase 3 | Pending |
+| UI-04 | Phase 3 | Pending |
+| UI-05 | Phase 3 | Pending |
+| UI-06 | Phase 3 | Pending |
+| UI-07 | Phase 3 | Pending |
+| UI-08 | Phase 3 | Pending |
+| OPS-01 | Phase 3 | Pending |
+| OPS-02 | Phase 3 | Pending |
+| OPS-03 | Phase 3 | Pending |
+| MANN-01 | Phase 3 | Pending |
+| MANN-02 | Phase 3 | Pending |
+| MANN-03 | Phase 3 | Pending |
+| MANN-04 | Phase 3 | Pending |
+| BATCH-01 | Phase 3 | Pending |
+| BATCH-02 | Phase 3 | Pending |
+| STATE-01 | Phase 2 | Pending |
+| STATE-02 | Phase 2 | Pending |
+| STATE-03 | Phase 2 | Pending |
+| STATE-04 | Phase 2 | Pending |
+| CLEAN-01 | Phase 1 | Pending |
+| CLEAN-02 | Phase 1 | Pending |
+| CLEAN-03 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 48 total
-- Mapped to phases: 0
-- Unmapped: 48 ⚠️
+- Mapped to phases: 48
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-24*
-*Last updated: 2026-03-24 after user feedback — added MODEL-07, REF-07, STACK-12/13, OPS-01/02/03, STATE-04, UI-08*
+*Last updated: 2026-03-24 -- phase mappings added after roadmap creation*
