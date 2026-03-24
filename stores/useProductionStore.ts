@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import { ProductionItem, Product, CustomPreset, ProductionStackSession } from '../types';
+import { ProductionItem, Product, CustomPreset, ProductionStackSession, StackLayer, StepState, TargetZone } from '../types';
+
+interface StackPreset {
+  id: string;
+  name: string;
+  layers: Array<{ name: string; productCategory: string; targetZone: TargetZone }>;
+  aspectRatio: string;
+  imageSize: string;
+  createdAt: number;
+}
 
 interface ProductionStore {
   queue: ProductionItem[];
@@ -30,7 +39,20 @@ interface ProductionStore {
   stackSession: ProductionStackSession | null;
   createStackSession: (baseImage: string, aspectRatio: string, imageSize: string) => ProductionStackSession;
   updateStackSession: (updates: Partial<ProductionStackSession>) => void;
+  addLayerToStack: (layer: StackLayer) => void;
+  removeLayerFromStack: (layerId: string) => void;
+  reorderStackLayers: (layerIds: string[]) => void;
+  updateStepState: (stepIndex: number, updates: Partial<StepState>) => void;
   resetStackSession: () => void;
+
+  // Session duplication (OPS-01)
+  duplicateStackSession: () => void;
+
+  // Stack presets (OPS-02)
+  stackPresets: StackPreset[];
+  saveStackPreset: (name: string) => void;
+  loadStackPreset: (presetId: string) => void;
+  deleteStackPreset: (presetId: string) => void;
 }
 
 export const useProductionStore = create<ProductionStore>((set, get) => ({
@@ -128,5 +150,128 @@ export const useProductionStore = create<ProductionStore>((set, get) => ({
         : null,
     })),
 
+  addLayerToStack: (layer) =>
+    set((state) => {
+      if (!state.stackSession) return {};
+      const layers = [...state.stackSession.layers, { ...layer, ordinal: state.stackSession.layers.length }];
+      return { stackSession: { ...state.stackSession, layers } };
+    }),
+
+  removeLayerFromStack: (layerId) =>
+    set((state) => {
+      if (!state.stackSession) return {};
+      const layers = state.stackSession.layers
+        .filter((l) => l.id !== layerId)
+        .map((l, i) => ({ ...l, ordinal: i }));
+      return { stackSession: { ...state.stackSession, layers } };
+    }),
+
+  reorderStackLayers: (layerIds) =>
+    set((state) => {
+      if (!state.stackSession) return {};
+      const layerMap = new Map(state.stackSession.layers.map((l) => [l.id, l]));
+      const layers = layerIds
+        .map((id) => layerMap.get(id))
+        .filter((l): l is StackLayer => l !== undefined)
+        .map((l, i) => ({ ...l, ordinal: i }));
+      return { stackSession: { ...state.stackSession, layers } };
+    }),
+
+  updateStepState: (stepIndex, updates) =>
+    set((state) => {
+      if (!state.stackSession) return {};
+      const stepStates = state.stackSession.stepStates.map((ss, i) =>
+        i === stepIndex ? { ...ss, ...updates } : ss
+      );
+      return { stackSession: { ...state.stackSession, stepStates } };
+    }),
+
   resetStackSession: () => set({ stackSession: null }),
+
+  // OPS-01: Session duplication
+  duplicateStackSession: () => {
+    const current = get().stackSession;
+    if (!current) return;
+    const clone: ProductionStackSession = {
+      ...current,
+      id: crypto.randomUUID(),
+      stepStates: current.layers.map((layer) => ({
+        layerId: layer.id,
+        status: 'pending' as const,
+        currentAttempt: 0,
+        maxAttempts: 3,
+        snapshots: [],
+        approvedSnapshotIndex: null,
+      })),
+      currentImage: null,
+      chatSession: null,
+      followUpHistory: [],
+      status: 'planning',
+      createdAt: Date.now(),
+      referenceBundle: null,
+      effectiveReferenceBundle: null,
+      excludedReferences: [],
+      validationResults: [],
+    };
+    set({ stackSession: clone });
+  },
+
+  // OPS-02: Stack presets
+  stackPresets: JSON.parse(localStorage.getItem('stack-presets') || '[]') as StackPreset[],
+
+  saveStackPreset: (name) => {
+    const session = get().stackSession;
+    if (!session) return;
+    const preset: StackPreset = {
+      id: crypto.randomUUID(),
+      name,
+      layers: session.layers.map((l) => ({
+        name: l.name,
+        productCategory: l.productCategory,
+        targetZone: l.targetZone,
+      })),
+      aspectRatio: session.aspectRatio,
+      imageSize: session.imageSize,
+      createdAt: Date.now(),
+    };
+    const updated = [...get().stackPresets, preset];
+    localStorage.setItem('stack-presets', JSON.stringify(updated));
+    set({ stackPresets: updated });
+  },
+
+  loadStackPreset: (presetId) => {
+    const preset = get().stackPresets.find((p) => p.id === presetId);
+    if (!preset) return;
+    const session: ProductionStackSession = {
+      id: crypto.randomUUID(),
+      baseImage: '',
+      aspectRatio: preset.aspectRatio,
+      imageSize: preset.imageSize,
+      layers: preset.layers.map((l, i) => ({
+        id: crypto.randomUUID(),
+        ordinal: i,
+        name: l.name,
+        productImage: '',
+        productCategory: l.productCategory,
+        targetZone: l.targetZone,
+      })),
+      stepStates: [],
+      currentImage: null,
+      chatSession: null,
+      followUpHistory: [],
+      status: 'planning',
+      createdAt: Date.now(),
+      referenceBundle: null,
+      effectiveReferenceBundle: null,
+      excludedReferences: [],
+      validationResults: [],
+    };
+    set({ stackSession: session });
+  },
+
+  deleteStackPreset: (presetId) => {
+    const updated = get().stackPresets.filter((p) => p.id !== presetId);
+    localStorage.setItem('stack-presets', JSON.stringify(updated));
+    set({ stackPresets: updated });
+  },
 }));

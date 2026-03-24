@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, TargetZone } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, TargetZone, ReferenceBundle, EffectiveBundle, ReferenceImage, ImageGenerationConfig, ImageChatSession, ParsedImageResponse } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
