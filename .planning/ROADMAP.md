@@ -65,7 +65,7 @@ Plans:
 Plans:
 - [x] 03-01-PLAN.md -- ProductionStack layout shell, BasePhotoPanel, OutputFormatSelector, SectionLabel extraction, App.tsx wiring with STACK default tab
 - [x] 03-02-PLAN.md -- StackPlanPanel with drag-reorder, AddLayerForm, GenerationProgressBar, FollowUpInput, StepHistoryStrip
-- [ ] 03-03-PLAN.md -- Engine execution wiring, ReferenceBundlePanel, DebugInspector, SessionToolbar, PresetModal, operator efficiency store actions
+- [x] 03-03-PLAN.md -- Engine execution wiring, ReferenceBundlePanel, DebugInspector, SessionToolbar, PresetModal, operator efficiency store actions
 - [ ] 03-04-PLAN.md -- MannequinEngine Send to Stack refactor, BatchEngine stack pipeline alignment
 
 ## Progress
