@@ -251,3 +251,65 @@ export interface ImageChatSession {
   model: string;
   generationConfig: ImageGenerationConfig;
 }
+
+// ─── Production Stack Engine Types ──────────────────────────────
+
+export type TargetZone =
+  | 'neck-base' | 'collarbone' | 'upper-chest' | 'mid-chest' | 'navel'
+  | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
+
+export interface StackLayer {
+  id: string;
+  ordinal: number;
+  name: string;
+  productImage: string;        // base64 data URI
+  productCategory: string;
+  targetZone: TargetZone;
+  blueprint?: JewelryBlueprint;
+  dimensions?: ProductDimensions;
+}
+
+export interface GenerationSnapshot {
+  stepIndex: number;
+  layerId: string;
+  prompt: string;
+  referencesUsed: ReferenceImage[];
+  referencesExcluded: ReferenceImage[];
+  generationConfig: ImageGenerationConfig;
+  inputImage: string;
+  outputImage: string;
+  validation: PixelFidelityResult | null;
+  timestamp: number;
+  attemptNumber: number;
+}
+
+export type StepStatus = 'pending' | 'executing' | 'validating' | 'completed' | 'failed' | 'retrying';
+
+export interface StepState {
+  layerId: string;
+  status: StepStatus;
+  currentAttempt: number;
+  maxAttempts: number;
+  snapshots: GenerationSnapshot[];
+  approvedSnapshotIndex: number | null;
+  error?: string;
+}
+
+export interface ProductionStackSession {
+  id: string;
+  baseImage: string;
+  aspectRatio: string;
+  imageSize: string;
+  layers: StackLayer[];
+  stepStates: StepState[];
+  currentImage: string | null;
+  chatSession: ImageChatSession | null;
+  followUpHistory: GenerationSnapshot[];
+  status: 'planning' | 'executing' | 'completed' | 'follow-up';
+  createdAt: number;
+  // STATE-01 contract fields — nullable, populated by engine during execution
+  referenceBundle: ReferenceBundle | null;
+  effectiveReferenceBundle: EffectiveBundle | null;
+  excludedReferences: ReferenceImage[];
+  validationResults: PixelFidelityResult[];
+}

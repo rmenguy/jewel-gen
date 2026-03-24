@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, ReferenceImage, ReferenceBundle, EffectiveBundle, ParsedImageResponse, ImageGenerationConfig, ImageChatSession } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, ReferenceImage, ReferenceBundle, EffectiveBundle, ParsedImageResponse, ImageGenerationConfig, ImageChatSession, TargetZone } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -92,6 +92,68 @@ const TEXT_MODEL = 'gemini-3-flash-preview'; // For text-only tasks (MODEL-06)
 function extractBase64(input: string): string {
   return input.includes('base64,') ? input.split(',')[1] : input;
 }
+
+// ─── Target Zone Logic (centralized, replaces scattered if/else) ───
+
+export const ZONE_PROMPTS: Record<TargetZone, string> = {
+  'neck-base': 'Necklace sitting at the base of the neck, above the collarbone. Chain follows neck curve naturally.',
+  'collarbone': 'Necklace worn close to the neck, on or just below the collarbone. Short to medium length.',
+  'upper-chest': 'Short sautoir — pendant reaches UPPER CHEST, between collarbone and breasts. Natural gravity drape.',
+  'mid-chest': 'Sautoir — pendant reaches BREAST LEVEL (mid-chest). Chain hangs from neck to mid-chest. NOT collarbone, NOT stomach.',
+  'navel': 'Extra-long sautoir — pendant reaches NAVEL. Chain falls past breasts and stomach to belly button height. Approximately 40-50cm visible chain on front.',
+  'ear-lobe': 'Earring attached to earlobe, clearly visible. Head angled to showcase.',
+  'ear-upper': 'Earring on upper ear (helix/tragus). Distinct from any lobe jewelry.',
+  'wrist': 'Bracelet worn on wrist, naturally positioned. Wrist and forearm visible.',
+  'finger': 'Ring worn on finger, naturally positioned. Fingers relaxed and visible.',
+};
+
+const CATEGORY_TO_ZONE: Record<string, TargetZone> = {
+  'sautoir-long': 'navel',
+  'sautoir-court': 'mid-chest',
+  'sautoir': 'mid-chest',
+  'collier': 'collarbone',
+  'necklace': 'collarbone',
+  'boucles': 'ear-lobe',
+  'earrings': 'ear-lobe',
+  'earring': 'ear-lobe',
+  'bracelet': 'wrist',
+  'bague': 'finger',
+  'ring': 'finger',
+};
+
+export function autoAssignZone(category: string): TargetZone {
+  const lower = category.toLowerCase();
+  for (const [key, zone] of Object.entries(CATEGORY_TO_ZONE)) {
+    if (lower.includes(key)) return zone;
+  }
+  return 'collarbone'; // safe default for unrecognized categories
+}
+
+export function getZonePlacementPrompt(zone: TargetZone): string {
+  return `PLACEMENT: ${ZONE_PROMPTS[zone]}`;
+}
+
+// ─── Output Format Constants ───
+
+export const ASPECT_RATIOS = [
+  { value: '1:1', label: 'Square 1:1' },
+  { value: '2:3', label: 'Portrait 2:3' },
+  { value: '3:2', label: 'Landscape 3:2' },
+  { value: '3:4', label: 'Portrait 3:4' },
+  { value: '4:3', label: 'Landscape 4:3' },
+  { value: '4:5', label: 'Portrait 4:5' },
+  { value: '5:4', label: 'Landscape 5:4' },
+  { value: '9:16', label: 'Vertical 9:16' },
+  { value: '16:9', label: 'Wide 16:9' },
+  { value: '21:9', label: 'Ultra-Wide 21:9' },
+] as const;
+
+export const IMAGE_SIZES = [
+  { value: '512', label: '512px (Draft)' },
+  { value: '1K', label: '1K (Preview)' },
+  { value: '2K', label: '2K (Production)' },
+  { value: '4K', label: '4K (Final)' },
+] as const;
 
 async function callUnifiedAPI(
   model: string,
