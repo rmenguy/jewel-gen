@@ -31,8 +31,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Reference architecture types, model constant, unified API caller, response parser, budget enforcement, and 5 named service functions
-- [ ] 01-02-PLAN.md -- Migrate all 24 image functions to unified service, delete old model code, hide Banner tab
+- [x] 01-01-PLAN.md -- Reference architecture types, model constant, unified API caller, response parser, budget enforcement, and 5 named service functions
+- [x] 01-02-PLAN.md -- Migrate all 24 image functions to unified service, delete old model code, hide Banner tab
 
 ### Phase 2: Production Stack Engine
 **Goal**: Users can run a complete production stack session -- lock a base image, build an ordered jewelry plan, execute progressive placement with per-step validation, retry individual steps, and make follow-up edits

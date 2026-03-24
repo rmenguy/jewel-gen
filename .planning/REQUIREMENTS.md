@@ -7,23 +7,23 @@
 
 ### Single Image Model (MODEL)
 
-- [ ] **MODEL-01**: All image generation uses `gemini-3.1-flash-image-preview` exclusively (no Imagen, no gemini-3-pro)
-- [ ] **MODEL-02**: Model ID is a single configurable constant, not hardcoded across files
-- [ ] **MODEL-03**: Unified image service abstraction with named functions: generateImageFromPrompt, editImageFromPrompt, editImageWithReferences, createImageChatSession, continueImageChatSession
-- [ ] **MODEL-04**: Standardized response parsing from `response.candidates[0].content.parts` — no duplicated parsing logic
-- [ ] **MODEL-05**: All image service functions support generationConfig (responseModalities, imageConfig.aspectRatio, imageConfig.imageSize)
-- [ ] **MODEL-06**: Text-only analytical tasks (catalog extraction) may remain on separate non-image model
-- [ ] **MODEL-07**: Support stateful multi-step image editing sessions to preserve continuity across sequential edits (lighting, geometry, previously placed objects)
+- [x] **MODEL-01**: All image generation uses `gemini-3.1-flash-image-preview` exclusively (no Imagen, no gemini-3-pro)
+- [x] **MODEL-02**: Model ID is a single configurable constant, not hardcoded across files
+- [x] **MODEL-03**: Unified image service abstraction with named functions: generateImageFromPrompt, editImageFromPrompt, editImageWithReferences, createImageChatSession, continueImageChatSession
+- [x] **MODEL-04**: Standardized response parsing from `response.candidates[0].content.parts` — no duplicated parsing logic
+- [x] **MODEL-05**: All image service functions support generationConfig (responseModalities, imageConfig.aspectRatio, imageConfig.imageSize)
+- [x] **MODEL-06**: Text-only analytical tasks (catalog extraction) may remain on separate non-image model
+- [x] **MODEL-07**: Support stateful multi-step image editing sessions to preserve continuity across sequential edits (lighting, geometry, previously placed objects)
 
 ### Multi-Reference Architecture (REF)
 
-- [ ] **REF-01**: ReferenceImage type with id, kind (character/object/composition/style), role, imageUrl, priority
-- [ ] **REF-02**: ReferenceBundle type grouping references by kind (characterReferences, objectReferences, compositionReferences, styleReferences)
-- [ ] **REF-03**: Reference budget enforcement: max 4 character + max 10 object, total max 14 per request
-- [ ] **REF-04**: Deterministic priority-based downselection when budget exceeded: locked base image first → primary jewelry references → character consistency references → detail crops → composition references → style references (style dropped first)
-- [ ] **REF-05**: Deterministic reference ordering in API request contents (text prompt first, then ordered inlineData parts)
-- [ ] **REF-06**: Prompts explicitly state role of each reference set (e.g., "image 1 is locked base scene", "images 2-3 are character consistency", "images 4-6 are jewelry fidelity")
-- [ ] **REF-07**: Support composition references (pose, framing, crop, layout guidance) as a distinct reference kind
+- [x] **REF-01**: ReferenceImage type with id, kind (character/object/composition/style), role, imageUrl, priority
+- [x] **REF-02**: ReferenceBundle type grouping references by kind (characterReferences, objectReferences, compositionReferences, styleReferences)
+- [x] **REF-03**: Reference budget enforcement: max 4 character + max 10 object, total max 14 per request
+- [x] **REF-04**: Deterministic priority-based downselection when budget exceeded: locked base image first → primary jewelry references → character consistency references → detail crops → composition references → style references (style dropped first)
+- [x] **REF-05**: Deterministic reference ordering in API request contents (text prompt first, then ordered inlineData parts)
+- [x] **REF-06**: Prompts explicitly state role of each reference set (e.g., "image 1 is locked base scene", "images 2-3 are character consistency", "images 4-6 are jewelry fidelity")
+- [x] **REF-07**: Support composition references (pose, framing, crop, layout guidance) as a distinct reference kind
 
 ### Production Stack Workflow (STACK)
 
@@ -79,9 +79,9 @@
 
 ### Cleanup (CLEAN)
 
-- [ ] **CLEAN-01**: Remove all imagen-4.0-ultra-generate-001 code paths
-- [ ] **CLEAN-02**: Remove all gemini-3-pro-image-preview image generation/editing code paths (keep gemini-3-flash-preview for text-only)
-- [ ] **CLEAN-03**: Banner engine tab hidden or removed from navigation (deferred feature)
+- [x] **CLEAN-01**: Remove all imagen-4.0-ultra-generate-001 code paths
+- [x] **CLEAN-02**: Remove all gemini-3-pro-image-preview image generation/editing code paths (keep gemini-3-flash-preview for text-only)
+- [x] **CLEAN-03**: Banner engine tab hidden or removed from navigation (deferred feature)
 
 ## v2 Requirements
 
@@ -116,20 +116,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODEL-01 | Phase 1 | Pending |
-| MODEL-02 | Phase 1 | Pending |
-| MODEL-03 | Phase 1 | Pending |
-| MODEL-04 | Phase 1 | Pending |
-| MODEL-05 | Phase 1 | Pending |
-| MODEL-06 | Phase 1 | Pending |
-| MODEL-07 | Phase 1 | Pending |
-| REF-01 | Phase 1 | Pending |
-| REF-02 | Phase 1 | Pending |
-| REF-03 | Phase 1 | Pending |
-| REF-04 | Phase 1 | Pending |
-| REF-05 | Phase 1 | Pending |
-| REF-06 | Phase 1 | Pending |
-| REF-07 | Phase 1 | Pending |
+| MODEL-01 | Phase 1 | Complete |
+| MODEL-02 | Phase 1 | Complete |
+| MODEL-03 | Phase 1 | Complete |
+| MODEL-04 | Phase 1 | Complete |
+| MODEL-05 | Phase 1 | Complete |
+| MODEL-06 | Phase 1 | Complete |
+| MODEL-07 | Phase 1 | Complete |
+| REF-01 | Phase 1 | Complete |
+| REF-02 | Phase 1 | Complete |
+| REF-03 | Phase 1 | Complete |
+| REF-04 | Phase 1 | Complete |
+| REF-05 | Phase 1 | Complete |
+| REF-06 | Phase 1 | Complete |
+| REF-07 | Phase 1 | Complete |
 | STACK-01 | Phase 2 | Pending |
 | STACK-02 | Phase 2 | Pending |
 | STACK-03 | Phase 2 | Pending |
@@ -164,9 +164,9 @@
 | STATE-02 | Phase 2 | Pending |
 | STATE-03 | Phase 2 | Pending |
 | STATE-04 | Phase 2 | Pending |
-| CLEAN-01 | Phase 1 | Pending |
-| CLEAN-02 | Phase 1 | Pending |
-| CLEAN-03 | Phase 1 | Pending |
+| CLEAN-01 | Phase 1 | Complete |
+| CLEAN-02 | Phase 1 | Complete |
+| CLEAN-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 48 total
