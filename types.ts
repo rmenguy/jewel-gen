@@ -188,6 +188,62 @@ export interface SupabaseProduct {
   metadata: Record<string, any>;
 }
 
+// ─── Production Stack Types ─────────────────────────────────
+
+export type TargetZone =
+  | 'neck-base' | 'collarbone' | 'upper-chest' | 'mid-chest' | 'navel'
+  | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
+
+export interface StackLayer {
+  id: string;
+  ordinal: number;
+  name: string;
+  productImage: string;
+  productCategory: string;
+  targetZone: TargetZone;
+  blueprint?: JewelryBlueprint;
+  dimensions?: ProductDimensions;
+}
+
+export type StepStatus = 'pending' | 'executing' | 'validating' | 'completed' | 'failed' | 'retrying';
+
+export interface ReferenceImage {
+  role: 'character' | 'object' | 'composition' | 'style';
+  base64: string;
+  label: string;
+}
+
+export interface ImageGenerationConfig {
+  aspectRatio: string;
+  resolution: string;
+  temperature?: number;
+  numberOfImages?: number;
+}
+
+export interface GenerationSnapshot {
+  stepIndex: number;
+  layerId: string;
+  prompt: string;
+  referencesUsed: ReferenceImage[];
+  referencesExcluded: ReferenceImage[];
+  generationConfig: ImageGenerationConfig;
+  inputImage: string;
+  outputImage: string;
+  validation: PixelFidelityResult | null;
+  timestamp: number;
+  attemptNumber: number;
+}
+
+export interface StepState {
+  layerId: string;
+  status: StepStatus;
+  currentAttempt: number;
+  maxAttempts: number;
+  snapshots: GenerationSnapshot[];
+  approvedSnapshotIndex: number | null;
+  error?: string;
+}
+
 // ─── Banner Engine ───────────────────────────────────────────
 
 export interface BannerJewelry {

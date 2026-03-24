@@ -1,4 +1,4 @@
-import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry } from "../types";
+import { ExtractionResult, MannequinCriteria, RefinementType, RefinementSelections, ExtractionLevel, JewelryBlueprint, PixelFidelityResult, ProductDimensions, PoseKey, SegmentationResult, BannerJewelry, TargetZone } from "../types";
 import { compareJewelryCrops, base64ToImageData, cropFromSegmentation, compositeJewelryOnModel } from './pixelCompare';
 
 const CATALOG_SYSTEM_INSTRUCTION = `
@@ -48,6 +48,22 @@ export function setApiKey(key: string) {
 
 export function getApiKey(): string {
     return API_KEY;
+}
+
+/**
+ * Auto-assign a target zone based on jewelry category.
+ */
+export function autoAssignZone(category: string): TargetZone {
+    const map: Record<string, TargetZone> = {
+        collier: 'collarbone',
+        sautoir: 'mid-chest',
+        boucles: 'ear-lobe',
+        bracelet: 'wrist',
+        bague: 'finger',
+        pendentif: 'upper-chest',
+        broche: 'upper-chest',
+    };
+    return map[category.toLowerCase()] ?? 'collarbone';
 }
 
 /**
