@@ -258,6 +258,8 @@ export type TargetZone =
   | 'neck-base' | 'collarbone' | 'upper-chest' | 'mid-chest' | 'navel'
   | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
 
+export type SizePreset = 'very_small' | 'small' | 'medium' | 'large';
+
 export interface StackLayer {
   id: string;
   ordinal: number;
@@ -265,6 +267,7 @@ export interface StackLayer {
   productImage: string;        // base64 data URI
   productCategory: string;
   targetZone: TargetZone;
+  sizePreset: SizePreset;
   blueprint?: JewelryBlueprint;
   dimensions?: ProductDimensions;
 }

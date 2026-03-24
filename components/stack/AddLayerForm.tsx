@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StackLayer, TargetZone } from '../../types';
+import { StackLayer, TargetZone, SizePreset } from '../../types';
 import { autoAssignZone } from '../../services/geminiService';
 import DropZone from '../ui/DropZone';
 
@@ -50,6 +50,7 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
   const [name, setName] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [targetZone, setTargetZone] = useState<TargetZone>(() => autoAssignZone(CATEGORIES[0]));
+  const [sizePreset, setSizePreset] = useState<SizePreset>('medium');
 
   useEffect(() => {
     setTargetZone(autoAssignZone(category));
@@ -68,6 +69,7 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
       productImage,
       productCategory: category,
       targetZone,
+      sizePreset,
     };
 
     onAddLayer(layer);
@@ -76,6 +78,7 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
     setName(CATEGORY_LABELS[CATEGORIES[0]] || CATEGORIES[0]);
     setCategory(CATEGORIES[0]);
     setTargetZone(autoAssignZone(CATEGORIES[0]));
+    setSizePreset('medium');
   };
 
   return (
@@ -147,6 +150,33 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
               } disabled:opacity-40`}
             >
               {ZONE_LABELS[zone]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sélecteur de taille */}
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Taille du bijou</label>
+        <div className="flex gap-1">
+          {([
+            { key: 'very_small' as SizePreset, label: 'Très petit' },
+            { key: 'small' as SizePreset, label: 'Petit' },
+            { key: 'medium' as SizePreset, label: 'Moyen' },
+            { key: 'large' as SizePreset, label: 'Grand' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSizePreset(key)}
+              disabled={disabled}
+              className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
+                sizePreset === key
+                  ? 'bg-indigo-600 text-white font-semibold'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              } disabled:opacity-40`}
+            >
+              {label}
             </button>
           ))}
         </div>

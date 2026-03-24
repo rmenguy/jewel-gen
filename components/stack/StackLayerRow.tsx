@@ -137,6 +137,12 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
         {ZONE_LABELS[layer.targetZone] || layer.targetZone}
       </span>
 
+      {layer.sizePreset && layer.sizePreset !== 'medium' && (
+        <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+          {layer.sizePreset === 'very_small' ? 'XS' : layer.sizePreset === 'small' ? 'S' : 'L'}
+        </span>
+      )}
+
       {status === 'failed' && onRetry && (
         <button
           type="button"

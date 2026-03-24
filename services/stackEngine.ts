@@ -19,7 +19,7 @@
 import {
   ProductionStackSession, StackLayer, GenerationSnapshot, StepState,
   ImageChatSession, ImageGenerationConfig, ReferenceImage, ReferenceBundle,
-  EffectiveBundle, PixelFidelityResult,
+  EffectiveBundle, PixelFidelityResult, SizePreset,
 } from '../types';
 import {
   editImageWithReferences,
@@ -60,67 +60,173 @@ export function resolveGenerationFlow(session: ProductionStackSession): Generati
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PROMPTS
+// SYSTÈME DE TAILLE INTELLIGENT
+// ═══════════════════════════════════════════════════════════════
+
+const SIZE_CONFIG: Record<SizePreset, { ratio: number; promptFr: string; promptEn: string }> = {
+  very_small: {
+    ratio: 0.6,
+    promptFr: 'nettement plus petit que la taille standard',
+    promptEn: 'noticeably smaller than standard scale — delicate, fine jewelry proportion',
+  },
+  small: {
+    ratio: 0.8,
+    promptFr: 'légèrement plus petit que la taille standard',
+    promptEn: 'slightly smaller than standard scale — subtle and refined proportion',
+  },
+  medium: {
+    ratio: 1.0,
+    promptFr: 'taille standard naturelle',
+    promptEn: 'natural standard scale relative to the model\'s neck and collarbone width',
+  },
+  large: {
+    ratio: 1.25,
+    promptFr: 'légèrement plus grand que la taille standard',
+    promptEn: 'slightly larger than standard scale — statement piece proportion, while remaining physically realistic',
+  },
+};
+
+export { SIZE_CONFIG };
+
+function getSizeInstruction(preset: SizePreset): string {
+  const cfg = SIZE_CONFIG[preset];
+  return `SCALE: The jewelry should appear ${cfg.promptEn}. Scale ratio relative to collarbone width: ${cfg.ratio}x.`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROMPT BUILDER — RENDU JOAILLERIE ULTRA HAUT DE GAMME
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Prompt pour le stacking direct — composition unique multi-références.
- * Envoie mannequin + tous les bijoux en un seul appel.
+ * Construit un prompt de qualité production pour le rendu de bijoux
+ * photoréalistes. Chaque bloc cible un aspect spécifique du réalisme.
+ *
+ * Le résultat doit être indistinguable d'une vraie photo de campagne
+ * joaillerie haut de gamme.
  */
-export function buildDirectCompositePrompt(
-  layers: StackLayer[],
-): string {
-  const layerDescriptions = layers.map((layer, i) => {
-    const zoneName = getZonePlacementPrompt(layer.targetZone);
-    return `Bijou ${i + 1} (${layer.name}, catégorie: ${layer.productCategory}): ${zoneName}`;
-  }).join('\n');
+export function buildLuxuryJewelryPrompt(opts: {
+  layers: StackLayer[];
+  mode: 'direct' | 'sequential';
+  isFirstTurn?: boolean;
+  currentLayerIndex?: number;
+}): string {
+  const { layers, mode, isFirstTurn = true, currentLayerIndex } = opts;
 
-  return [
-    'COMPOSITION UNIQUE DE BIJOUX SUR MANNEQUIN',
-    '',
-    'Image 1 ci-dessous : photo mannequin de base (NE PAS MODIFIER le visage, le corps, les vêtements, la pose, l\'éclairage ni le décor).',
-    '',
-    `Les images suivantes sont ${layers.length} bijoux à placer TOUS ENSEMBLE sur le mannequin dans une seule composition :`,
-    layerDescriptions,
-    '',
-    'RÈGLES STRICTES :',
-    '- Placer TOUS les bijoux mentionnés dans une SEULE image finale.',
-    '- Respecter fidèlement la forme, la couleur et les détails de chaque bijou référence.',
-    '- Superposition réaliste : taille correcte relative au corps, drapé naturel, pas de fusion entre les pièces.',
-    '- Les bijoux doivent être positionnés selon les zones indiquées.',
-    '- Préserver intégralement le mannequin, la pose, l\'éclairage et le décor.',
-    '- Rendu photoréaliste de qualité production.',
-  ].join('\n');
-}
+  // Pour le mode séquentiel, on ne décrit que le calque courant
+  const activeLayers = mode === 'sequential' && currentLayerIndex !== undefined
+    ? [layers[currentLayerIndex]]
+    : layers;
 
-/**
- * Prompt pour l'édition séquentielle — ajout incrémental conversationnel.
- * Enrichit une image existante avec un nouveau bijou.
- */
-export function buildSequentialEditPrompt(
-  layer: StackLayer,
-  isFirstTurn: boolean,
-): string {
-  const zoneName = getZonePlacementPrompt(layer.targetZone);
-
-  const base = [
-    isFirstTurn
-      ? 'L\'image ci-dessous est une photo de production à enrichir.'
-      : 'Continue sur la même image.',
-    '',
-    `AJOUTER : ${layer.name} (${layer.productCategory})`,
-    zoneName,
-    '',
-    'RÈGLES STRICTES :',
-    '- Conserver STRICTEMENT tout ce qui est déjà présent sur l\'image (mannequin, bijoux existants, pose, éclairage, décor).',
-    '- Ajouter UNIQUEMENT le nouveau bijou décrit ci-dessus.',
-    '- Ne pas réinterpréter, déplacer ni modifier les éléments déjà validés.',
-    '- Respecter fidèlement la forme, la couleur et les détails du bijou référence (image jointe).',
-    '- Superposition réaliste : taille correcte, drapé naturel, pas de fusion.',
-    '- Rendu photoréaliste de qualité production.',
+  // ── A. PRÉSERVATION ABSOLUE DE L'IMAGE ──
+  const preservation = [
+    '== IMAGE PRESERVATION (ABSOLUTE) ==',
+    'Preserve EXACTLY and without ANY modification:',
+    '- Face, expression, eyes, skin texture, makeup',
+    '- Hair (style, color, position, strands)',
+    '- Body pose, posture, hand position',
+    '- Clothing (fabric, folds, color, texture)',
+    '- Lighting setup (direction, intensity, color temperature, shadows)',
+    '- Background (blur, color, texture, objects)',
+    '- Camera framing, angle, depth of field',
+    '- Overall color grading and photo grain',
+    'The model must look IDENTICAL to the input — not "similar", IDENTICAL.',
   ];
 
-  return base.join('\n');
+  // ── B. FIDÉLITÉ ABSOLUE DU BIJOU ──
+  const fidelity = [
+    '',
+    '== JEWELRY FIDELITY (ABSOLUTE) ==',
+    'Each jewelry reference image must be reproduced with EXACT fidelity:',
+    '- Precise shape, proportions, silhouette — no reinterpretation',
+    '- Exact chain structure: link type, link size, link pattern, chain width',
+    '- Pendant: exact shape, exact stone arrangement, exact setting style',
+    '- Metal: exact color (gold/silver/rose), exact finish (polished/matte/brushed)',
+    '- Stones: exact color, exact cut shape, exact number, exact arrangement',
+    '- Fine details: clasps, engravings, textures, surface patterns',
+    'DO NOT simplify, stylize, smooth, merge, or reinterpret any design element.',
+    'The jewelry in the output must be recognizable as the SAME piece from the reference.',
+  ];
+
+  // ── C. PHYSIQUE RÉALISTE (CRITIQUE) ──
+  const physics = [
+    '',
+    '== REALISTIC PHYSICS (CRITICAL) ==',
+    'The jewelry must obey real-world physics as if physically worn:',
+    '- Chain follows the natural curve of the neck and collarbone',
+    '- Chain rests ON the skin with visible contact — not floating above it',
+    '- Natural tension: slight sag between anchor points, not rigid or geometric',
+    '- Pendant hangs vertically under gravity from its attachment point',
+    '- Pendant shows real weight: slight swing, natural depth, not flat against chest',
+    '- Micro-shadows under the chain and pendant where they contact skin',
+    '- Correct perspective matching the body angle and camera position',
+    '- Depth and volume: jewelry is a 3D object, not a flat overlay',
+    'FORBIDDEN: floating jewelry, sticker effect, Photoshop overlay look, rigid geometry.',
+  ];
+
+  // ── D. INTÉGRATION VISUELLE PREMIUM ──
+  const integration = [
+    '',
+    '== VISUAL INTEGRATION (PREMIUM) ==',
+    '- Match the EXACT lighting of the scene: highlights on metal must come from the same light source as highlights on skin',
+    '- Match shadow direction and softness with existing body shadows',
+    '- Match color temperature: warm/cool cast must be consistent',
+    '- Match photo grain and sharpness: jewelry should not look "cleaner" than the rest of the image',
+    '- Match contrast and dynamic range of the photograph',
+    '- Subtle skin-metal interaction: faint warm reflection on metal from skin, faint cool reflection on skin from metal',
+    'The final result must look like the jewelry was physically present during the photoshoot.',
+    'NOT like it was added afterwards. NOT like AI generation. Like a REAL photograph.',
+  ];
+
+  // ── E. PLACEMENT ET TAILLE PAR CALQUE ──
+  const placements = activeLayers.map((layer, i) => {
+    const zone = getZonePlacementPrompt(layer.targetZone);
+    const size = getSizeInstruction(layer.sizePreset || 'medium');
+    return `\nJewelry ${i + 1}: "${layer.name}" (${layer.productCategory})\n${zone}\n${size}`;
+  });
+
+  // ── F. STACKING (si plusieurs bijoux) ──
+  const stacking = activeLayers.length > 1 ? [
+    '',
+    '== MULTI-JEWELRY STACKING ==',
+    '- Clear visual hierarchy: shorter necklaces closer to neck, longer ones lower',
+    '- Natural spacing between each piece — no collision, no overlap of chains',
+    '- Each chain hangs independently with its own gravity and drape',
+    '- Each piece must remain individually readable and recognizable',
+    '- No fusion between pieces — distinct separation at all points',
+  ] : [];
+
+  // ── G. INSTRUCTION DE MODE ──
+  const modeInstruction = mode === 'sequential'
+    ? [
+        '',
+        '== INCREMENTAL EDIT MODE ==',
+        isFirstTurn
+          ? 'The image below is the base photograph to edit.'
+          : 'Continue editing the same image from the previous turn.',
+        'Add ONLY the new jewelry piece described above.',
+        'Preserve ALL previously placed jewelry exactly as-is — do not move, resize, or alter them.',
+      ]
+    : [
+        '',
+        '== DIRECT COMPOSITION MODE ==',
+        'Image 1 below is the base model photograph.',
+        `The following ${activeLayers.length} image(s) are jewelry references — place them ALL in a single composition.`,
+      ];
+
+  // ── ASSEMBLAGE FINAL ──
+  return [
+    'Edit this image to create a professional luxury jewelry campaign photograph.',
+    '',
+    ...preservation,
+    ...fidelity,
+    ...physics,
+    ...integration,
+    ...placements,
+    ...stacking,
+    ...modeInstruction,
+    '',
+    'The final image must be indistinguishable from a real high-end jewelry photoshoot.',
+  ].join('\n');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -180,8 +286,11 @@ export async function renderDirectComposite(
     styleReferences: [],
   };
 
-  // 3. Construire le prompt
-  const prompt = buildDirectCompositePrompt(session.layers);
+  // 3. Construire le prompt luxury
+  const prompt = buildLuxuryJewelryPrompt({
+    layers: session.layers,
+    mode: 'direct',
+  });
 
   onProgress(`Composition de ${session.layers.length} bijou${session.layers.length > 1 ? 'x' : ''} en cours…`);
 
@@ -275,7 +384,12 @@ export async function renderSequentialEdit(
   }
 
   // 3. Construire le prompt séquentiel
-  const prompt = buildSequentialEditPrompt(layer, isFirstTurn);
+  const prompt = buildLuxuryJewelryPrompt({
+    layers: session.layers,
+    mode: 'sequential',
+    isFirstTurn,
+    currentLayerIndex: layerIndex,
+  });
 
   // 4. Construire les parts du message
   const userParts: any[] = [{ text: prompt }];
