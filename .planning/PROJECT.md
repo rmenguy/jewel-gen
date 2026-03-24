@@ -27,17 +27,16 @@ Production-grade jewelry placement on locked base photos with product fidelity, 
 
 ### Active
 
-- [ ] Unify all image generation/editing onto single model: `gemini-3.1-flash-image-preview`
-- [ ] Structured multi-reference input system (ReferenceBundle with character/object/composition/style roles)
-- [ ] Reference budget enforcement (max 14 refs: up to 4 character + up to 10 object)
+- [x] Unify all image generation/editing onto single model: `gemini-3.1-flash-image-preview` — Phase 1
+- [x] Structured multi-reference input system (ReferenceBundle with character/object/composition/style roles) — Phase 1
+- [x] Reference budget enforcement (max 14 refs: up to 4 character + up to 10 object) — Phase 1
+- [x] Unified image service abstraction (single model, many workflows) — Phase 1
 - [ ] Reference prioritization logic with user-visible feedback
 - [ ] Production Stack as primary workflow (locked base → ordered stack plan → progressive edits → validation)
 - [ ] Stack planning layer with ordered jewelry layers and target zones
 - [ ] Output format control (aspect ratio + resolution selection per session)
 - [ ] Per-step validation during progressive stacking
 - [ ] Multi-turn conversational follow-up edits after generation
-- [ ] Creative Exploration mode (separate from Production Stack)
-- [ ] Unified image service abstraction (single model, many workflows)
 - [ ] Production Stack UI: base photo panel, output format panel, stack plan panel, reference bundle panel, generation progress panel, follow-up edit panel
 - [ ] Mannequin engine demoted to base image preparation studio (same single model)
 - [ ] Batch engine executes new production stack pipeline (after stabilization)
@@ -127,4 +126,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-24 after initialization*
+*Last updated: 2026-03-24 after Phase 1 completion*
