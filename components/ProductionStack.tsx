@@ -11,15 +11,11 @@ import {
 } from '../services/stackEngine';
 import { downloadBase64Image } from '../services/downloadService';
 
-// Child components — Plans 01 + 02
+// Panneaux enfants
 import { BasePhotoPanel } from './stack/BasePhotoPanel';
 import { OutputFormatSelector } from './stack/OutputFormatSelector';
 import { StackPlanPanel } from './stack/StackPlanPanel';
-import { GenerationProgressBar } from './stack/GenerationProgressBar';
 import { FollowUpInput } from './stack/FollowUpInput';
-import { StepHistoryStrip } from './stack/StepHistoryStrip';
-
-// Child components — Plan 03
 import { ReferenceBundlePanel } from './stack/ReferenceBundlePanel';
 import { DebugInspector } from './stack/DebugInspector';
 import { SessionToolbar } from './stack/SessionToolbar';
@@ -44,26 +40,27 @@ export const ProductionStack: React.FC = () => {
     deleteStackPreset,
   } = useProductionStore();
 
-  // Local state for pre-session setup
+  // État local pour la configuration pré-session
   const [pendingBaseImage, setPendingBaseImage] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageSize, setImageSize] = useState('1K');
 
-  // Step history viewer
-  const [viewingStepIndex, setViewingStepIndex] = useState<number | null>(null);
-
-  // Preset modal
+  // Modale de préréglages
   const [presetModalOpen, setPresetModalOpen] = useState(false);
   const [presetModalMode, setPresetModalMode] = useState<'save' | 'load'>('save');
 
-  // Execution state
+  // État d'exécution
   const [isExecuting, setIsExecuting] = useState(false);
   const [isFollowingUp, setIsFollowingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progressText, setProgressText] = useState<string | null>(null);
 
   const isLocked = stackSession !== null;
   const baseImage = isLocked ? stackSession.baseImage : pendingBaseImage;
   const isDisabled = stackSession?.status === 'executing' || isExecuting;
+
+  // L'image finale composite — toujours une seule
+  const displayImage = stackSession?.currentImage ?? null;
 
   // ── Handlers ────────────────────────────────────────────────
 
@@ -102,7 +99,7 @@ export const ProductionStack: React.FC = () => {
     reorderStackLayers(layerIds);
   }, [reorderStackLayers]);
 
-  // ── Engine execution (Pattern 1 from research) ─────────────
+  // ── Exécution du moteur de composition ──────────────────────
 
   const handleExecuteStack = useCallback(async () => {
     const store = useProductionStore.getState();
@@ -111,18 +108,27 @@ export const ProductionStack: React.FC = () => {
 
     setIsExecuting(true);
     setError(null);
-    setViewingStepIndex(null);
+    setProgressText('Préparation de la composition…');
 
-    // Work on a mutable copy (engine mutates the session object)
     const mutableSession = structuredClone(session);
-    mutableSession.chatSession = null; // Not cloneable
+    mutableSession.chatSession = null;
 
     initializeStepStates(mutableSession);
     store.updateStackSession({ status: 'executing', stepStates: mutableSession.stepStates });
 
     try {
+      const totalLayers = mutableSession.layers.length;
       await executeStackPlan(mutableSession, (stepIndex, stepState) => {
-        // Real-time progress sync
+        // Progression en temps réel — message simple
+        const layerName = mutableSession.layers[stepIndex]?.name || `Bijou ${stepIndex + 1}`;
+        if (stepState.status === 'executing') {
+          setProgressText(`Placement de ${layerName}… (${stepIndex + 1}/${totalLayers})`);
+        } else if (stepState.status === 'completed') {
+          setProgressText(`${layerName} placé ✓ (${stepIndex + 1}/${totalLayers})`);
+        } else if (stepState.status === 'failed') {
+          setProgressText(`Échec du placement de ${layerName}`);
+        }
+
         useProductionStore.getState().updateStepState(stepIndex, {
           status: stepState.status,
           currentAttempt: stepState.currentAttempt,
@@ -135,10 +141,8 @@ export const ProductionStack: React.FC = () => {
         });
       });
 
-      // Compact memory after completion
       compactSnapshots(mutableSession);
 
-      // Final store update
       store.updateStackSession({
         status: mutableSession.status,
         currentImage: mutableSession.currentImage,
@@ -147,15 +151,19 @@ export const ProductionStack: React.FC = () => {
         excludedReferences: mutableSession.excludedReferences,
         validationResults: mutableSession.validationResults,
       });
+
+      setProgressText('Composition terminée ✓');
+      setTimeout(() => setProgressText(null), 3000);
     } catch (err: any) {
-      setError(err.message || 'Execution failed');
+      setError(err.message || 'Erreur lors de la composition');
       store.updateStackSession({ status: 'planning' });
+      setProgressText(null);
     } finally {
       setIsExecuting(false);
     }
   }, []);
 
-  // ── Follow-up editing ──────────────────────────────────────
+  // ── Modification de suivi ───────────────────────────────────
 
   const handleFollowUp = useCallback(async (prompt: string) => {
     const store = useProductionStore.getState();
@@ -179,13 +187,13 @@ export const ProductionStack: React.FC = () => {
         followUpHistory: mutableSession.followUpHistory,
       });
     } catch (err: any) {
-      setError(err.message || 'Follow-up edit failed');
+      setError(err.message || 'Erreur lors de la modification');
     } finally {
       setIsFollowingUp(false);
     }
   }, []);
 
-  // ── Per-step retry (STACK-09) ─────────────────────────────
+  // ── Réessayer une étape spécifique ──────────────────────────
 
   const handleRetryStep = useCallback(async (layerId: string) => {
     const store = useProductionStore.getState();
@@ -197,6 +205,7 @@ export const ProductionStack: React.FC = () => {
 
     setIsExecuting(true);
     setError(null);
+    setProgressText(`Nouveau placement de ${session.layers[stepIndex].name}…`);
 
     try {
       const mutableSession = structuredClone(session);
@@ -216,51 +225,30 @@ export const ProductionStack: React.FC = () => {
         currentImage: mutableSession.currentImage,
         stepStates: mutableSession.stepStates,
       });
+
+      setProgressText('Composition mise à jour ✓');
+      setTimeout(() => setProgressText(null), 3000);
     } catch (err: any) {
-      setError(err.message || 'Retry failed');
+      setError(err.message || 'Échec du nouveau placement');
+      setProgressText(null);
     } finally {
       setIsExecuting(false);
     }
   }, []);
 
-  // ── Step history ───────────────────────────────────────────
-
-  const handleStepClick = useCallback((stepIndex: number) => {
-    setViewingStepIndex((prev) => (prev === stepIndex ? null : stepIndex));
-  }, []);
-
-  // Determine the image to display in center panel
-  const getDisplayImage = (): string | null => {
-    if (!stackSession) return null;
-
-    if (viewingStepIndex !== null) {
-      const step = stackSession.stepStates[viewingStepIndex];
-      if (step?.approvedSnapshotIndex !== null && step?.snapshots.length > 0) {
-        return step.snapshots[step.approvedSnapshotIndex!]?.outputImage || null;
-      }
-    }
-
-    return stackSession.currentImage;
-  };
-
-  const displayImage = getDisplayImage();
-
-  // ── Download ───────────────────────────────────────────────
+  // ── Téléchargement ──────────────────────────────────────────
 
   const handleDownload = useCallback(() => {
     if (!displayImage) return;
-    const sessionId = stackSession?.id?.slice(0, 8) || 'stack';
-    downloadBase64Image(displayImage, `stack-${sessionId}-${Date.now()}.png`);
+    const sessionId = stackSession?.id?.slice(0, 8) || 'composition';
+    downloadBase64Image(displayImage, `composition-${sessionId}-${Date.now()}.png`);
   }, [displayImage, stackSession?.id]);
 
-  // ── Duplicate ──────────────────────────────────────────────
+  // ── Dupliquer / Préréglages ─────────────────────────────────
 
   const handleDuplicate = useCallback(() => {
     duplicateStackSession();
-    console.log('Session duplicated. Modify and re-run.');
   }, [duplicateStackSession]);
-
-  // ── Preset modal ───────────────────────────────────────────
 
   const handleOpenSavePreset = useCallback(() => {
     setPresetModalMode('save');
@@ -272,23 +260,11 @@ export const ProductionStack: React.FC = () => {
     setPresetModalOpen(true);
   }, []);
 
-  const handleSavePreset = useCallback((name: string) => {
-    saveStackPreset(name);
-  }, [saveStackPreset]);
-
-  const handleLoadPreset = useCallback((presetId: string) => {
-    loadStackPreset(presetId);
-  }, [loadStackPreset]);
-
-  const handleDeletePreset = useCallback((presetId: string) => {
-    deleteStackPreset(presetId);
-  }, [deleteStackPreset]);
-
-  // ── Render ─────────────────────────────────────────────────
+  // ── Rendu ───────────────────────────────────────────────────
 
   return (
     <div className="h-full flex flex-col">
-      {/* Session Toolbar — only when session exists */}
+      {/* Barre de session */}
       {stackSession && (
         <SessionToolbar
           sessionId={stackSession.id}
@@ -300,9 +276,9 @@ export const ProductionStack: React.FC = () => {
         />
       )}
 
-      {/* 3-column layout */}
+      {/* Disposition 3 colonnes */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
-        {/* Left Panel — Session Setup */}
+        {/* Panneau gauche — Configuration */}
         <div className="w-full lg:w-[300px] lg:flex-shrink-0 space-y-6 overflow-y-auto">
           <BasePhotoPanel
             baseImage={baseImage}
@@ -325,74 +301,52 @@ export const ProductionStack: React.FC = () => {
           />
         </div>
 
-        {/* Center Panel — Generation & Preview */}
+        {/* Panneau central — Composition unique */}
         <div className="flex-1 min-h-0 flex flex-col">
           {!isLocked ? (
             <div className="flex-1 flex flex-col items-center justify-center bg-white border border-gray-200 rounded-2xl p-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                No Production Stack Session
+                Aucune session de composition
               </h2>
               <p className="text-sm text-gray-500 text-center max-w-sm">
-                Upload or transfer a base mannequin image to start building your jewelry stack.
+                Importez ou transférez une photo mannequin pour commencer à composer vos bijoux.
               </p>
             </div>
           ) : (
             <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden">
-              {/* Main image display */}
+              {/* Zone d'affichage de l'image finale unique */}
               <div className="flex-1 min-h-0 relative flex items-center justify-center p-4">
                 {displayImage ? (
                   <img
                     src={displayImage}
-                    alt="Stack result"
+                    alt="Composition finale"
                     className="max-w-full max-h-full object-contain rounded-lg"
                   />
                 ) : (
                   <p className="text-sm text-gray-400">
                     {stackSession.status === 'executing'
-                      ? 'Generating...'
-                      : 'Add layers and execute to see results'}
+                      ? 'Composition en cours…'
+                      : 'Ajoutez des calques bijoux puis lancez la composition'}
                   </p>
                 )}
 
-                {/* Step viewing indicator */}
-                {viewingStepIndex !== null && (
-                  <div className="absolute top-3 left-3 bg-indigo-600 text-white text-xs font-medium px-2 py-1 rounded">
-                    Viewing Step {viewingStepIndex + 1}
+                {/* Indicateur de progression — simple texte, pas de barre segmentée */}
+                {progressText && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900/80 text-white text-xs font-medium px-4 py-2 rounded-full backdrop-blur-sm">
+                    {progressText}
                   </div>
                 )}
               </div>
 
-              {/* Generation Progress Bar */}
-              {stackSession.stepStates.length > 0 && (
-                <div className="px-4 pb-2">
-                  <GenerationProgressBar
-                    stepStates={stackSession.stepStates}
-                    layers={stackSession.layers}
-                  />
-                </div>
-              )}
-
-              {/* Step History Strip */}
-              {stackSession.stepStates.length > 0 && (
-                <div className="px-4">
-                  <StepHistoryStrip
-                    stepStates={stackSession.stepStates}
-                    currentViewIndex={viewingStepIndex}
-                    onStepClick={handleStepClick}
-                  />
-                </div>
-              )}
-
-              {/* Error display */}
+              {/* Erreur */}
               {error && (
                 <div className="px-4 py-2">
                   <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>
                 </div>
               )}
 
-              {/* Action buttons + Follow-up — pinned at bottom */}
+              {/* Actions — toujours en bas */}
               <div className="flex-shrink-0">
-                {/* Execute / Download buttons */}
                 {stackSession.status === 'planning' && stackSession.layers.length >= 1 && (
                   <div className="px-4 py-3 border-t border-gray-200">
                     <Button
@@ -402,24 +356,24 @@ export const ProductionStack: React.FC = () => {
                       disabled={isDisabled}
                       className="w-full"
                     >
-                      Execute Stack
+                      Générer la composition
                     </Button>
                   </div>
                 )}
 
-                {displayImage && (
+                {displayImage && !isExecuting && (
                   <div className="px-4 pb-2">
                     <Button
                       variant="secondary"
                       onClick={handleDownload}
                       className="w-full text-xs"
                     >
-                      Download Image
+                      Télécharger l'image
                     </Button>
                   </div>
                 )}
 
-                {/* Follow-up input — only after execution completes */}
+                {/* Modification de suivi — après la composition terminée */}
                 {(stackSession.status === 'completed' || stackSession.status === 'follow-up') && (
                   <FollowUpInput
                     onSendEdit={handleFollowUp}
@@ -432,12 +386,12 @@ export const ProductionStack: React.FC = () => {
           )}
         </div>
 
-        {/* Right Panel — Stack Plan & Debug */}
+        {/* Panneau droit — Plan de superposition & Debug */}
         <div className="w-full lg:w-[300px] lg:flex-shrink-0 overflow-y-auto">
           {!isLocked ? (
             <div className="flex flex-col items-center justify-center bg-white border border-gray-200 rounded-2xl p-8 h-full min-h-[200px]">
               <p className="text-sm text-gray-400 text-center">
-                No layers yet. Add jewelry pieces to build your placement plan.
+                Aucun calque. Ajoutez des bijoux pour construire votre plan de superposition.
               </p>
             </div>
           ) : (
@@ -452,7 +406,7 @@ export const ProductionStack: React.FC = () => {
                 disabled={isDisabled}
               />
 
-              {/* Debug Inspector — collapsed by default */}
+              {/* Inspecteur debug — replié par défaut */}
               <div className="px-3 pb-3">
                 <DebugInspector
                   stepStates={stackSession.stepStates}
@@ -464,14 +418,14 @@ export const ProductionStack: React.FC = () => {
         </div>
       </div>
 
-      {/* Preset Modal */}
+      {/* Modale de préréglages */}
       <PresetModal
         isOpen={presetModalOpen}
         mode={presetModalMode}
         presets={stackPresets}
-        onSave={handleSavePreset}
-        onLoad={handleLoadPreset}
-        onDelete={handleDeletePreset}
+        onSave={(name) => saveStackPreset(name)}
+        onLoad={(id) => loadStackPreset(id)}
+        onDelete={(id) => deleteStackPreset(id)}
         onClose={() => setPresetModalOpen(false)}
       />
     </div>

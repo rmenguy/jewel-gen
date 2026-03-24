@@ -7,8 +7,8 @@ interface ReferenceBundlePanelProps {
 }
 
 const SECTION_CONFIG: { key: keyof ReferenceBundle; label: string }[] = [
-  { key: 'characterReferences', label: 'Character' },
-  { key: 'objectReferences', label: 'Object' },
+  { key: 'characterReferences', label: 'Personnage' },
+  { key: 'objectReferences', label: 'Objet' },
   { key: 'compositionReferences', label: 'Composition' },
   { key: 'styleReferences', label: 'Style' },
 ];
@@ -28,7 +28,7 @@ const ReferenceItem: React.FC<{ ref_: ReferenceImage }> = ({ ref_ }) => (
     </div>
     <div className="flex-1 min-w-0">
       <p className="text-xs text-gray-700 truncate">{ref_.role}</p>
-      <p className="text-[10px] text-gray-400">Priority: {ref_.priority}</p>
+      <p className="text-[10px] text-gray-400">Priorité : {ref_.priority}</p>
     </div>
   </div>
 );
@@ -54,14 +54,8 @@ const CollapsibleSection: React.FC<{
           </span>
         </span>
         <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           className={`text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
         >
           <polyline points="6 9 12 15 18 9" />
@@ -83,11 +77,11 @@ export const ReferenceBundlePanel: React.FC<ReferenceBundlePanelProps> = ({
 }) => {
   return (
     <div>
-      <SectionLabel>REFERENCE BUNDLE</SectionLabel>
+      <SectionLabel>GROUPE DE RÉFÉRENCES</SectionLabel>
 
       {!referenceBundle ? (
         <p className="text-xs text-gray-400 mt-2">
-          References will appear after execution begins
+          Les références apparaîtront après le lancement de la composition
         </p>
       ) : (
         <div className="mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">

@@ -20,12 +20,12 @@ export const BasePhotoPanel: React.FC<BasePhotoPanelProps> = ({
 }) => {
   return (
     <div className="min-h-[320px]">
-      <SectionLabel>BASE IMAGE</SectionLabel>
+      <SectionLabel>IMAGE DE BASE</SectionLabel>
 
       {!baseImage && (
         <DropZone
           onFileDrop={onBaseImageSet}
-          label="Upload or transfer a base mannequin image to start building your jewelry stack."
+          label="Importez ou transférez une photo mannequin pour commencer votre composition."
           accept="image/*"
         />
       )}
@@ -35,7 +35,7 @@ export const BasePhotoPanel: React.FC<BasePhotoPanelProps> = ({
           <div className="w-full max-w-[280px] aspect-square bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center">
             <img
               src={baseImage}
-              alt="Base mannequin"
+              alt="Mannequin de base"
               className="max-w-full max-h-full object-contain"
             />
           </div>
@@ -45,7 +45,7 @@ export const BasePhotoPanel: React.FC<BasePhotoPanelProps> = ({
             disabled={disabled}
             className="w-full"
           >
-            Lock Base Image
+            Verrouiller l'image de base
           </Button>
         </div>
       )}
@@ -55,13 +55,12 @@ export const BasePhotoPanel: React.FC<BasePhotoPanelProps> = ({
           <div className="w-full max-w-[280px] aspect-square border-2 border-indigo-600 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50 relative">
             <img
               src={baseImage}
-              alt="Base mannequin"
+              alt="Mannequin de base"
               className="max-w-full max-h-full object-contain"
             />
-            {/* Lock indicator */}
             <div
               className="absolute top-2 right-2 w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center shadow-sm"
-              aria-label="Base image locked"
+              aria-label="Image de base verrouillée"
             >
               <svg
                 width="14"
@@ -79,7 +78,7 @@ export const BasePhotoPanel: React.FC<BasePhotoPanelProps> = ({
             </div>
           </div>
           <span className="text-xs text-indigo-600 font-medium uppercase tracking-wider">
-            Base Locked
+            Base verrouillée
           </span>
         </div>
       )}

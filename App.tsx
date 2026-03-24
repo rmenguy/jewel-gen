@@ -84,7 +84,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex flex-col">
                     <h1 className="text-lg font-black tracking-tighter text-gray-900 leading-none">
-                        <span className="text-indigo-600">{activeEngine === 'PRODUCTION' ? 'STACK' : activeEngine}</span>.ENGINE
+                        <span className="text-indigo-600">{activeEngine === 'PRODUCTION' ? 'COMPOSITION' : activeEngine === 'CATALOG' ? 'CATALOGUE' : activeEngine === 'BATCH' ? 'LOT' : activeEngine}</span>.ENGINE
                     </h1>
                     <p className="text-[9px] text-gray-500 font-medium uppercase tracking-[0.3em] leading-none mt-1">
                         AC.MARKETING SUITE
@@ -94,10 +94,10 @@ const App: React.FC = () => {
 
             <nav className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
                 {([
-                    { key: 'PRODUCTION' as EngineType, label: 'STACK' },
+                    { key: 'PRODUCTION' as EngineType, label: 'COMPOSITION' },
                     { key: 'MANNEQUIN' as EngineType, label: 'MANNEQUIN' },
-                    { key: 'CATALOG' as EngineType, label: 'CATALOG' },
-                    { key: 'BATCH' as EngineType, label: 'BATCH' },
+                    { key: 'CATALOG' as EngineType, label: 'CATALOGUE' },
+                    { key: 'BATCH' as EngineType, label: 'LOT' },
                 ]).map(({ key, label }) => (
                     <button
                         key={key}
@@ -119,10 +119,10 @@ const App: React.FC = () => {
                     onChange={(e) => setActiveEngine(e.target.value as EngineType)}
                     className="bg-white border border-gray-200 text-xs font-bold rounded-lg px-2 py-1 outline-none text-gray-900"
                  >
-                    <option value="PRODUCTION">STACK</option>
+                    <option value="PRODUCTION">COMPOSITION</option>
                     <option value="MANNEQUIN">MANNEQUIN</option>
-                    <option value="CATALOG">CATALOG</option>
-                    <option value="BATCH">BATCH</option>
+                    <option value="CATALOG">CATALOGUE</option>
+                    <option value="BATCH">LOT</option>
                  </select>
             </div>
         </div>

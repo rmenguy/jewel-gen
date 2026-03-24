@@ -13,7 +13,6 @@ export const DebugInspector: React.FC<DebugInspectorProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Find the latest completed step snapshot
   const latestSnapshot = useMemo(() => {
     for (let i = stepStates.length - 1; i >= 0; i--) {
       const step = stepStates[i];
@@ -34,18 +33,12 @@ export const DebugInspector: React.FC<DebugInspectorProps> = ({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between py-2 text-left"
-        aria-label={isOpen ? 'Collapse debug inspector' : 'Expand debug inspector'}
+        aria-label={isOpen ? 'Replier l\'inspecteur' : 'Déplier l\'inspecteur'}
       >
-        <SectionLabel>DEBUG: REFERENCE INSPECTOR</SectionLabel>
+        <SectionLabel>INSPECTEUR DE RÉFÉRENCES</SectionLabel>
         <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           className={`text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
         >
           <polyline points="6 9 12 15 18 9" />
@@ -54,10 +47,9 @@ export const DebugInspector: React.FC<DebugInspectorProps> = ({
 
       {isOpen && latestSnapshot && (
         <div className="space-y-4 mt-2">
-          {/* References Included */}
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">
-              References Included ({latestSnapshot.referencesUsed.length})
+              Références incluses ({latestSnapshot.referencesUsed.length})
             </p>
             {latestSnapshot.referencesUsed.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
@@ -74,40 +66,36 @@ export const DebugInspector: React.FC<DebugInspectorProps> = ({
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-[8px]">
-                        IMG
-                      </div>
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-[8px]">IMG</div>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400">None</p>
+              <p className="text-xs text-gray-400">Aucune</p>
             )}
           </div>
 
-          {/* References Excluded */}
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">
-              References Excluded ({excludedReferences.length})
+              Références exclues ({excludedReferences.length})
             </p>
             {excludedReferences.length > 0 ? (
               <ul className="space-y-1">
                 {excludedReferences.map((ref_, idx) => (
                   <li key={ref_.id || idx} className="text-xs text-gray-500">
-                    {ref_.role} (kind: {ref_.kind}, priority: {ref_.priority})
+                    {ref_.role} (type : {ref_.kind}, priorité : {ref_.priority})
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400">None</p>
+              <p className="text-xs text-gray-400">Aucune</p>
             )}
           </div>
 
-          {/* Generation Config */}
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">
-              Generation Config
+              Configuration de génération
             </p>
             <pre className="font-mono text-xs bg-gray-50 p-2 rounded text-gray-700 overflow-x-auto">
               {JSON.stringify(latestSnapshot.generationConfig, null, 2)}

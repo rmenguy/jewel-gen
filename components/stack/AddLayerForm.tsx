@@ -18,21 +18,31 @@ const CATEGORIES = [
   'broche',
 ] as const;
 
+const CATEGORY_LABELS: Record<string, string> = {
+  collier: 'Collier',
+  sautoir: 'Sautoir',
+  boucles: 'Boucles d\'oreilles',
+  bracelet: 'Bracelet',
+  bague: 'Bague',
+  pendentif: 'Pendentif',
+  broche: 'Broche',
+};
+
 const ALL_ZONES: TargetZone[] = [
   'neck-base', 'collarbone', 'upper-chest', 'mid-chest', 'navel',
   'ear-lobe', 'ear-upper', 'wrist', 'finger',
 ];
 
 const ZONE_LABELS: Record<TargetZone, string> = {
-  'neck-base': 'Neck Base',
-  'collarbone': 'Collarbone',
-  'upper-chest': 'Upper Chest',
-  'mid-chest': 'Mid Chest',
-  'navel': 'Navel',
-  'ear-lobe': 'Ear Lobe',
-  'ear-upper': 'Ear Upper',
-  'wrist': 'Wrist',
-  'finger': 'Finger',
+  'neck-base': 'Base du cou',
+  'collarbone': 'Clavicule',
+  'upper-chest': 'Haut de poitrine',
+  'mid-chest': 'Milieu de poitrine',
+  'navel': 'Nombril',
+  'ear-lobe': 'Lobe d\'oreille',
+  'ear-upper': 'Haut d\'oreille',
+  'wrist': 'Poignet',
+  'finger': 'Doigt',
 };
 
 const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = false }) => {
@@ -41,11 +51,10 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [targetZone, setTargetZone] = useState<TargetZone>(() => autoAssignZone(CATEGORIES[0]));
 
-  // Auto-assign zone when category changes
   useEffect(() => {
     setTargetZone(autoAssignZone(category));
-    if (!name || CATEGORIES.includes(name as typeof CATEGORIES[number])) {
-      setName(category);
+    if (!name || Object.values(CATEGORY_LABELS).includes(name) || CATEGORIES.includes(name as typeof CATEGORIES[number])) {
+      setName(CATEGORY_LABELS[category] || category);
     }
   }, [category]);
 
@@ -54,8 +63,8 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
 
     const layer: StackLayer = {
       id: crypto.randomUUID(),
-      ordinal: 0, // parent recomputes
-      name: name || category,
+      ordinal: 0,
+      name: name || CATEGORY_LABELS[category] || category,
       productImage,
       productCategory: category,
       targetZone,
@@ -63,21 +72,19 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
 
     onAddLayer(layer);
 
-    // Reset form
     setProductImage(null);
-    setName(CATEGORIES[0]);
+    setName(CATEGORY_LABELS[CATEGORIES[0]] || CATEGORIES[0]);
     setCategory(CATEGORIES[0]);
     setTargetZone(autoAssignZone(CATEGORIES[0]));
   };
 
   return (
     <div className="p-3 space-y-3 border-t border-gray-200 bg-gray-50/50">
-      {/* Product image upload */}
       {productImage ? (
         <div className="flex items-center gap-3">
           <img
             src={productImage}
-            alt="Product preview"
+            alt="Aperçu du produit"
             className="w-12 h-12 object-cover rounded border border-gray-200"
           />
           <button
@@ -85,20 +92,19 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
             onClick={() => setProductImage(null)}
             className="text-xs text-gray-500 hover:text-red-600 transition-colors"
           >
-            Change image
+            Changer l'image
           </button>
         </div>
       ) : (
         <DropZone
           onFileDrop={(base64) => setProductImage(base64)}
-          label="Drop jewelry image"
+          label="Déposez une image du bijou"
           accept="image/*"
         />
       )}
 
-      {/* Category select */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Category</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Catégorie</label>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
@@ -107,28 +113,26 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
         >
           {CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>
-              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              {CATEGORY_LABELS[cat] || cat}
             </option>
           ))}
         </select>
       </div>
 
-      {/* Name input */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Nom</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={disabled}
-          placeholder="Layer name"
+          placeholder="Nom du calque"
           className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
         />
       </div>
 
-      {/* Target zone pills */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Target Zone</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Zone cible</label>
         <div className="flex flex-wrap gap-1">
           {ALL_ZONES.map((zone) => (
             <button
@@ -148,14 +152,13 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
         </div>
       </div>
 
-      {/* Add button */}
       <button
         type="button"
         onClick={handleSubmit}
         disabled={disabled || !productImage}
         className="w-full text-sm font-medium py-2 px-4 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
-        Add Jewelry Layer
+        Ajouter un calque bijou
       </button>
     </div>
   );

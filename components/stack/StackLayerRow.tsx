@@ -11,15 +11,15 @@ interface StackLayerRowProps {
 }
 
 const ZONE_LABELS: Record<string, string> = {
-  'neck-base': 'Neck Base',
-  'collarbone': 'Collarbone',
-  'upper-chest': 'Upper Chest',
-  'mid-chest': 'Mid Chest',
-  'navel': 'Navel',
-  'ear-lobe': 'Ear Lobe',
-  'ear-upper': 'Ear Upper',
-  'wrist': 'Wrist',
-  'finger': 'Finger',
+  'neck-base': 'Base du cou',
+  'collarbone': 'Clavicule',
+  'upper-chest': 'Haut poitrine',
+  'mid-chest': 'Milieu poitrine',
+  'navel': 'Nombril',
+  'ear-lobe': 'Lobe',
+  'ear-upper': 'Haut oreille',
+  'wrist': 'Poignet',
+  'finger': 'Doigt',
 };
 
 const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
@@ -64,7 +64,6 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
     }
   }, [layer.id, onReorder]);
 
-  // Build class names based on visual states
   let rowClasses = 'flex items-center gap-3 px-3 py-2 transition-all duration-150 relative';
 
   if (isDragging) {
@@ -75,7 +74,6 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
     rowClasses += ' bg-white border-b border-gray-200 hover:bg-gray-50';
   }
 
-  // Status-based left border
   if (status === 'executing') {
     rowClasses += ' border-l-[3px] border-l-indigo-600';
   } else if (status === 'completed') {
@@ -94,11 +92,10 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
       onDrop={handleDrop}
       className={rowClasses}
     >
-      {/* Drag handle - 6 dot grip icon */}
       <button
         type="button"
         className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1"
-        aria-label={`Reorder ${layer.name}`}
+        aria-label={`Réordonner ${layer.name}`}
         tabIndex={-1}
       >
         <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor">
@@ -111,14 +108,12 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
         </svg>
       </button>
 
-      {/* Product thumbnail 40x40 */}
       <div className="relative flex-shrink-0 w-10 h-10 rounded overflow-hidden bg-gray-100">
         <img
           src={layer.productImage}
           alt={layer.name}
           className={`w-full h-full object-cover ${status === 'executing' ? 'animate-pulse' : ''}`}
         />
-        {/* Status overlay icons */}
         {status === 'completed' && (
           <div className="absolute inset-0 flex items-center justify-center bg-emerald-500/20">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -136,34 +131,30 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
         )}
       </div>
 
-      {/* Layer name */}
       <span className="flex-1 text-sm text-gray-700 truncate">{layer.name}</span>
 
-      {/* Target zone badge */}
       <span className="flex-shrink-0 text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
         {ZONE_LABELS[layer.targetZone] || layer.targetZone}
       </span>
 
-      {/* Retry button — shown when step failed */}
       {status === 'failed' && onRetry && (
         <button
           type="button"
           onClick={() => onRetry(layer.id)}
           disabled={disabled}
           className="flex-shrink-0 px-2 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded transition-colors disabled:opacity-40"
-          aria-label={`Retry ${layer.name}`}
+          aria-label={`Réessayer ${layer.name}`}
         >
-          Retry
+          Réessayer
         </button>
       )}
 
-      {/* Remove button */}
       <button
         type="button"
         onClick={() => onRemove(layer.id)}
         disabled={disabled}
         className="flex-shrink-0 p-1 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
-        aria-label={`Remove ${layer.name}`}
+        aria-label={`Retirer ${layer.name}`}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />

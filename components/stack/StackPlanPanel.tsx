@@ -23,7 +23,6 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
   onAddLayer,
   disabled = false,
 }) => {
-  // Handle reorder: remove dragId from current position, insert before dropId
   const handleReorder = useCallback(
     (dragId: string, dropId: string) => {
       const currentIds = layers.map((l) => l.id);
@@ -36,7 +35,6 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
     [layers, onReorder]
   );
 
-  // Find step state for a given layer
   const getStepState = useCallback(
     (layerId: string): StepState | undefined =>
       stepStates.find((s) => s.layerId === layerId),
@@ -45,22 +43,20 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <SectionLabel>Stack Plan</SectionLabel>
+        <SectionLabel>Plan de superposition</SectionLabel>
         {layers.length > 0 && (
           <span className="text-[10px] font-medium text-gray-400 ml-1">
-            ({layers.length} layer{layers.length !== 1 ? 's' : ''})
+            ({layers.length} calque{layers.length !== 1 ? 's' : ''})
           </span>
         )}
       </div>
 
-      {/* Layer list */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {layers.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <p className="text-sm text-gray-400">
-              No layers yet. Add jewelry pieces to build your placement plan.
+              Aucun calque. Ajoutez des bijoux pour construire votre plan de superposition.
             </p>
           </div>
         ) : (
@@ -80,7 +76,6 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
         )}
       </div>
 
-      {/* Add layer form at bottom */}
       <div className="flex-shrink-0">
         <AddLayerForm onAddLayer={onAddLayer} disabled={disabled} />
       </div>
