@@ -137,27 +137,15 @@ export function buildLuxuryJewelryPrompt(opts: {
       : '\n\nContinue from the previous image. Add ONLY the new piece — do not alter anything already present.'
     : `\n\nReference image 1 below is the model photograph. The next ${activeLayers.length} image(s) are the jewelry pieces to place — compose them all in a single shot.`;
 
-  return `This is a photograph from a luxury jewelry brand campaign. The model is wearing the jewelry pieces shown in the reference images. Generate this photograph.
+  return `PRESERVE THE BASE IMAGE. This is the most important instruction. The output must be pixel-identical to the input photograph except for the added jewelry. The model's face, skin texture, pores, freckles, hair, expression, eye direction, pose, hands, clothing folds, background, color grading, grain, sharpness, contrast, and framing must be exactly the same. If you change any of these, the result is a failure. Compare the input and output — the only visible difference should be the jewelry.
 
-CRITICAL — EXACT JEWELRY REPRODUCTION AT MAXIMUM QUALITY: Study each reference jewelry image very carefully. The jewelry in the output must be the EXACT SAME piece as in the reference — not a similar one, not an interpretation, the SAME one. Copy the precise chain link pattern, the exact pendant shape and details, the exact number and color of stones, the exact metal tone (yellow gold, rose gold, silver). If the reference shows a specific clasp, charm, or texture, it must appear identically in the output. The client will hold the real piece next to your image — it must match. Render the jewelry at the highest possible detail and sharpness — every individual chain link must be visible and crisp, every stone facet must catch light, every surface texture must be rendered. This is a product shot for a luxury brand: the jewelry must be the sharpest, most detailed element in the frame.
+Add the jewelry from the reference images onto this photograph. The jewelry must be the EXACT piece from the reference — same chain pattern, pendant, stones, metal color. Place it naturally: chain drapes on the neck following skin contours, pendant hangs with gravity, contact shadows where metal touches skin.
 
-NATURAL INTEGRATION: The model put on this jewelry before the photographer pressed the shutter. The chain goes around the back of her neck, emerges on both sides, and drapes across the collarbones. It follows the skin's contours — dipping into hollows, rising over bones. The skin is slightly indented where the chain presses. The pendant hangs with real weight and depth.
-
-LIGHT MATCHING — Before rendering the jewelry, analyze the existing photograph's lighting:
-1. Where is the main light source? Look at the brightest highlight on the model's forehead, nose bridge, and shoulder — that reveals the light direction.
-2. How soft or hard is the light? If shadows on the face have gradual edges, it is soft light (large source). If shadows are crisp, it is hard light (small source). The jewelry reflections must have the same softness.
-3. What is the color temperature? Look at the skin tone highlights — are they warm (golden/yellow) or cool (blue/white)? The jewelry highlights must have the exact same color temperature.
-4. What is the exposure and dynamic range? The jewelry must not appear brighter or more contrasted than the surrounding skin. It must sit within the same dynamic range and exposure as the rest of the image.
-
-Apply this analysis to the jewelry: highlights on the metal must come from the same direction and have the same softness as highlights on the skin. Shadows under the chain must match existing body shadows in direction, softness, and intensity. Metal surfaces must show subtle, environment-based reflections — the blurred shape of nearby clothing, the warm glow of skin — not artificial or overly clean highlights. Do not introduce any new light source. Do not use neutral or default studio lighting. The jewelry must look like it was under the exact same lighting conditions as the model during the shoot.
-
-METAL REALISM — The gold must look like real gold that has been worn, handled, and exists in the physical world — not like a 3D render or a flat yellow color. Real gold has subtle tonal variations across its surface: warmer and darker in concave areas where light doesn't reach, brighter and cooler on convex edges that catch light directly. Each chain link reflects its micro-environment slightly differently depending on its angle. The surface has invisible micro-scratches and wear marks that break up reflections into slightly irregular patterns — not perfect mirror streaks, but soft, textured, living reflections. The gold color itself is not uniform: it shifts subtly between warm yellow, pale champagne, and deep amber depending on what it reflects. Introduce subtle micro-contrast variations across the metal surface — tiny differences in brightness between adjacent links, slight tonal shifts where the chain curves — that make the gold feel three-dimensional and photographed, not painted or generated. The gold must inherit the scene's color grading: if the photograph is warm, the gold is rich and deep; if cool, the gold has a slightly muted, sophisticated tone. Never render gold as a flat saturated yellow or an overly polished mirror.
-
-Do not change the model's face, skin, hair, pose, clothing, or background.
+Match the scene's lighting: analyze where highlights fall on the skin, match that direction and softness on the metal. Gold should show subtle tonal variations and environment reflections, not flat uniform color.
 
 ${jewelryBrief}${stackNote}${modeNote}
 
-The jewelry must integrate seamlessly into the existing image — same light, same grain, same depth of field, same color grading. A real photograph, not a composite.`;
+Output the same photograph with jewelry added — nothing else changed.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
