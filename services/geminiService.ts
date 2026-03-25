@@ -86,7 +86,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
 
 // ─── Unified Image Service Infrastructure ───────────────────────
 
-export const IMAGE_MODEL = 'gemini-3.1-pro-preview';
+export const IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
 const TEXT_MODEL = 'gemini-3-flash-preview'; // For text-only tasks (MODEL-06)
 
 export function extractBase64(input: string): string {
