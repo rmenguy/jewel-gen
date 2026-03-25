@@ -56,12 +56,19 @@ export const ProductionStack: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState<string | null>(null);
 
+  // Multi-prises
+  const [shotCount, setShotCount] = useState(1);
+  const [shotResults, setShotResults] = useState<string[]>([]);
+  const [selectedShot, setSelectedShot] = useState<number | null>(null);
+
   const isLocked = stackSession !== null;
   const baseImage = isLocked ? stackSession.baseImage : pendingBaseImage;
   const isDisabled = stackSession?.status === 'executing' || isExecuting;
 
-  // L'image finale composite — toujours une seule
-  const displayImage = stackSession?.currentImage ?? null;
+  // L'image affichée : soit la prise sélectionnée, soit la dernière composition
+  const displayImage = selectedShot !== null
+    ? shotResults[selectedShot] ?? null
+    : stackSession?.currentImage ?? null;
 
   // ── Handlers ────────────────────────────────────────────────
 
@@ -108,6 +115,34 @@ export const ProductionStack: React.FC = () => {
 
   // ── Exécution du moteur de composition ──────────────────────
 
+  const runSingleComposition = useCallback(async (): Promise<string | null> => {
+    const store = useProductionStore.getState();
+    const session = store.stackSession;
+    if (!session || session.layers.length === 0) return null;
+
+    const mutableSession = structuredClone(session);
+    mutableSession.chatSession = null;
+
+    initializeStepStates(mutableSession);
+
+    await executeComposition(
+      mutableSession,
+      (message) => setProgressText(message),
+      (stepIndex, stepState) => {
+        useProductionStore.getState().updateStepState(stepIndex, {
+          status: stepState.status,
+          currentAttempt: stepState.currentAttempt,
+          snapshots: stepState.snapshots,
+          approvedSnapshotIndex: stepState.approvedSnapshotIndex,
+          error: stepState.error,
+        });
+      },
+    );
+
+    compactSnapshots(mutableSession);
+    return mutableSession.currentImage;
+  }, []);
+
   const handleExecuteStack = useCallback(async () => {
     const store = useProductionStore.getState();
     const session = store.stackSession;
@@ -115,45 +150,45 @@ export const ProductionStack: React.FC = () => {
 
     setIsExecuting(true);
     setError(null);
+    setShotResults([]);
+    setSelectedShot(null);
 
-    const mutableSession = structuredClone(session);
-    mutableSession.chatSession = null;
-
-    initializeStepStates(mutableSession);
-    store.updateStackSession({ status: 'executing', stepStates: mutableSession.stepStates });
+    store.updateStackSession({ status: 'executing' });
 
     try {
-      await executeComposition(
-        mutableSession,
-        // onProgress — met à jour le texte de progression
-        (message) => setProgressText(message),
-        // onStepUpdate — synchronise le store en temps réel
-        (stepIndex, stepState) => {
-          useProductionStore.getState().updateStepState(stepIndex, {
-            status: stepState.status,
-            currentAttempt: stepState.currentAttempt,
-            snapshots: stepState.snapshots,
-            approvedSnapshotIndex: stepState.approvedSnapshotIndex,
-            error: stepState.error,
-          });
-          useProductionStore.getState().updateStackSession({
-            currentImage: mutableSession.currentImage,
-          });
-        },
-      );
+      const results: string[] = [];
 
-      compactSnapshots(mutableSession);
+      // Lancer N prises séquentiellement (pas en parallèle — rate limiting)
+      for (let shot = 0; shot < shotCount; shot++) {
+        if (shotCount > 1) {
+          setProgressText(`Prise ${shot + 1}/${shotCount}…`);
+        }
+
+        const result = await runSingleComposition();
+        if (result) {
+          results.push(result);
+          setShotResults([...results]);
+        }
+      }
+
+      if (results.length === 0) {
+        throw new Error('Aucune image générée');
+      }
+
+      // Sélectionner la première par défaut
+      const finalImage = results[results.length - 1];
+      setShotResults(results);
+      setSelectedShot(results.length > 1 ? null : null);
 
       store.updateStackSession({
-        status: mutableSession.status,
-        currentImage: mutableSession.currentImage,
-        stepStates: mutableSession.stepStates,
-        referenceBundle: mutableSession.referenceBundle,
-        excludedReferences: mutableSession.excludedReferences,
-        validationResults: mutableSession.validationResults,
+        status: 'completed',
+        currentImage: finalImage,
       });
 
-      setProgressText('Composition terminée ✓');
+      setProgressText(shotCount > 1
+        ? `${results.length} prise${results.length > 1 ? 's' : ''} terminée${results.length > 1 ? 's' : ''} ✓`
+        : 'Composition terminée ✓'
+      );
       setTimeout(() => setProgressText(null), 3000);
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la composition');
@@ -225,6 +260,17 @@ export const ProductionStack: React.FC = () => {
       setIsExecuting(false);
     }
   }, []);
+
+  // ── Sélection d'une prise ─────────────────────────────────
+
+  const handleSelectShot = useCallback((index: number) => {
+    setSelectedShot(index);
+    // Promouvoir cette prise comme image courante de la session
+    const image = shotResults[index];
+    if (image) {
+      useProductionStore.getState().updateStackSession({ currentImage: image });
+    }
+  }, [shotResults]);
 
   // ── Téléchargement ──────────────────────────────────────────
 
@@ -335,10 +381,71 @@ export const ProductionStack: React.FC = () => {
                 </div>
               )}
 
+              {/* Grille multi-prises — si plus d'un résultat */}
+              {shotResults.length > 1 && (
+                <div className="px-4 pb-2">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    {shotResults.length} prises — cliquez pour sélectionner
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {shotResults.map((img, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleSelectShot(i)}
+                        className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-all ${
+                          selectedShot === i
+                            ? 'border-indigo-600 shadow-lg ring-2 ring-indigo-200'
+                            : 'border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        <img src={img} alt={`Prise ${i + 1}`} className="w-full h-full object-cover" />
+                        <span className={`absolute top-1 left-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          selectedShot === i
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-black/50 text-white'
+                        }`}>
+                          {i + 1}
+                        </span>
+                        {selectedShot === i && (
+                          <div className="absolute bottom-1 right-1 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Actions — toujours en bas */}
               <div className="flex-shrink-0">
-                {stackSession.status === 'planning' && stackSession.layers.length >= 1 && (
-                  <div className="px-4 py-3 border-t border-gray-200">
+                {(stackSession.status === 'planning' || stackSession.status === 'completed') && stackSession.layers.length >= 1 && (
+                  <div className="px-4 py-3 border-t border-gray-200 space-y-2">
+                    {/* Sélecteur nombre de prises */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Prises</span>
+                      <div className="flex gap-1 flex-1">
+                        {[1, 2, 3, 4].map(n => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setShotCount(n)}
+                            disabled={isDisabled}
+                            className={`flex-1 text-xs py-1 rounded transition-colors ${
+                              shotCount === n
+                                ? 'bg-indigo-600 text-white font-semibold'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            } disabled:opacity-40`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <Button
                       variant="primary"
                       onClick={handleExecuteStack}
@@ -346,9 +453,11 @@ export const ProductionStack: React.FC = () => {
                       disabled={isDisabled}
                       className="w-full"
                     >
-                      {detectedFlow === 'direct'
-                        ? `Composer (${stackSession!.layers.length} bijoux)`
-                        : 'Ajouter à la composition'}
+                      {stackSession.status === 'completed'
+                        ? `Relancer ${shotCount > 1 ? `(${shotCount} prises)` : ''}`
+                        : detectedFlow === 'direct'
+                          ? `Composer${shotCount > 1 ? ` (${shotCount} prises)` : ''}`
+                          : 'Ajouter à la composition'}
                     </Button>
                   </div>
                 )}

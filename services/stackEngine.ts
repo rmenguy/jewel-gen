@@ -137,20 +137,21 @@ export function buildLuxuryJewelryPrompt(opts: {
       : '\n\nContinue from the previous image. Add ONLY the new piece — do not alter anything already present.'
     : `\n\nReference image 1 below is the model photograph. The next ${activeLayers.length} image(s) are the jewelry pieces to place — compose them all in a single shot.`;
 
-  return `You are a world-class jewelry retoucher working on a luxury e-commerce campaign. Your job is to place real jewelry onto a model photograph so the result is indistinguishable from an actual studio photoshoot.
+  return `You are the lead retoucher at a top luxury jewelry house. A client has sent you their exact product photographs and a model photograph from a professional studio shoot. Your job: make it look like the model was wearing the jewelry during the shoot. The client will compare your output side-by-side with the real product — any deviation in shape, color, chain pattern, stone count, or proportions is unacceptable.
 
-Study the reference jewelry image(s) carefully. Reproduce every detail with absolute precision: the exact chain link pattern, pendant shape, stone colors, metal finish, clasp style, and proportions. Do not simplify, stylize, or reinterpret any design element — the client must recognize their exact product.
+PRODUCT FIDELITY — This is the most important requirement. Look at every jewelry reference image pixel by pixel. Count the chain links. Study the exact pendant outline. Note every stone, its exact cut, its exact color, its exact position in the setting. Note the metal — is it yellow gold, rose gold, white gold, silver, platinum? Is the finish polished mirror, brushed satin, or hammered? Reproduce ALL of this exactly. The output jewelry must be a photographic twin of the reference — same piece, same proportions, same details. If the chain has oval links, they must be oval. If there are 3 stones, there must be 3 stones. If the pendant is 2cm relative to the chain width, keep that ratio. Never invent, simplify, smooth, or "improve" anything.
 
-Place the jewelry on the model as if she wore it during the shoot. The chain must follow the real curvature of her neck and collarbones, resting naturally on skin with visible contact. It should sag gently between anchor points with realistic tension — never rigid, never floating. Any pendant must hang under gravity with real weight and depth, casting a soft micro-shadow on the chest beneath it. The jewelry is a three-dimensional object with volume and perspective matching the camera angle — not a flat overlay.
+PHYSICAL REALISM — The jewelry exists in the same physical world as the model. The necklace chain drapes around the neck following the actual contour of her skin and collarbones. Where the chain touches skin, it presses very slightly into the flesh and creates a faint contact shadow. The chain sags naturally between the back of the neck and the front — showing real gravity and weight, like fabric would. Any pendant hangs straight down from its bail, swinging naturally, with real three-dimensional depth — you can see the pendant is closer to the camera than the chest behind it. The jewelry catches light as a real metallic object: sharp specular highlights on polished surfaces, soft diffused reflections on matte surfaces, tiny glints on individual links.
 
-Match the photograph's lighting exactly: metal highlights must come from the same light source illuminating the skin. Match the shadow direction, color temperature, contrast, depth of field, and film grain. The jewelry should look like it belongs in the same physical space, captured by the same camera at the same moment. Add subtle light interactions — faint warm skin reflections on polished metal, gentle cool metal reflections on nearby skin.
+LIGHTING MATCH — Study the existing photograph's lighting: which direction do the highlights come from on her nose, forehead, shoulders? The jewelry highlights must come from that same source. Match the shadow softness — if her shadows are soft and diffused (softbox), the jewelry shadows must be too. Match the color temperature — warm or cool. Match the depth of field — if the background is blurry, jewelry at the same depth as the neck should be sharp, but a long pendant falling forward might be very slightly sharper than the chest behind it.
 
-Do not modify the model in any way: her face, expression, skin, hair, pose, clothing, the background, and the overall color grading must remain pixel-identical to the input.
+SKIN AND METAL INTERACTION — Where gold touches skin, there is a faint warm golden reflection on the nearby skin. Where the chain curves, you see both the lit side and the shadow side of individual links, just like a macro photograph would reveal. The skin under a chain shows the faintest interrupted shadow pattern from the individual links.
 
-Jewelry to place:
+THE MODEL IS SACRED — Do not change anything about the model: not a single pixel of her face, eyes, expression, skin texture, pores, hair, body pose, clothing, background, framing, or color grading. The ONLY change is the addition of jewelry.
+
 ${jewelryBrief}${stackNote}${modeNote}
 
-Deliver a single final photograph that looks like it came straight from a Cartier or Tiffany campaign shoot — not like AI, not like a composite, not like retouching. Like reality.`;
+The final image should fool a professional jeweler into thinking the model was actually wearing these exact pieces during the photoshoot.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
