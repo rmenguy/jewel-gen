@@ -266,9 +266,6 @@ function buildEditRequest(
     generationConfig: {
       responseModalities: ['IMAGE', 'TEXT'],
       ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
-      thinkingConfig: {
-        thinkingLevel: 'High',
-      },
     },
   };
 }
@@ -284,7 +281,6 @@ export const generateImageFromPrompt = async (
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
         ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
-        thinkingConfig: { thinkingLevel: 'High' },
       },
     });
     return parseImageResponse(response);
@@ -310,7 +306,6 @@ export const editImageFromPrompt = async (
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
         ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
-        thinkingConfig: { thinkingLevel: 'High' },
       },
     });
     return parseImageResponse(response);
@@ -347,7 +342,6 @@ export const createImageChatSession = (config?: {
           ...(config.imageSize && { imageSize: config.imageSize }),
         },
       } : {}),
-      thinkingConfig: { thinkingLevel: 'High' },
     },
   };
 };
