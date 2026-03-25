@@ -143,13 +143,19 @@ CRITICAL — EXACT JEWELRY REPRODUCTION AT MAXIMUM QUALITY: Study each reference
 
 NATURAL INTEGRATION: The model put on this jewelry before the photographer pressed the shutter. The chain goes around the back of her neck, emerges on both sides, and drapes across the collarbones. It follows the skin's contours — dipping into hollows, rising over bones. The skin is slightly indented where the chain presses. The pendant hangs with real weight and depth.
 
-ENVIRONMENT LIGHTING: The metal reflects the actual environment of this photo. Study what surrounds the model — the gold shows soft reflections of nearby objects (clothing fabric, softbox shapes, skin warmth). The jewelry has the same sharpness, grain, color grading, contrast, and depth of field as the skin at that same depth. No synthetic highlights. No separate lighting.
+LIGHT MATCHING — Before rendering the jewelry, analyze the existing photograph's lighting:
+1. Where is the main light source? Look at the brightest highlight on the model's forehead, nose bridge, and shoulder — that reveals the light direction.
+2. How soft or hard is the light? If shadows on the face have gradual edges, it is soft light (large source). If shadows are crisp, it is hard light (small source). The jewelry reflections must have the same softness.
+3. What is the color temperature? Look at the skin tone highlights — are they warm (golden/yellow) or cool (blue/white)? The jewelry highlights must have the exact same color temperature.
+4. What is the exposure and dynamic range? The jewelry must not appear brighter or more contrasted than the surrounding skin. It must sit within the same dynamic range and exposure as the rest of the image.
+
+Apply this analysis to the jewelry: highlights on the metal must come from the same direction and have the same softness as highlights on the skin. Shadows under the chain must match existing body shadows in direction, softness, and intensity. Metal surfaces must show subtle, environment-based reflections — the blurred shape of nearby clothing, the warm glow of skin — not artificial or overly clean highlights. Do not introduce any new light source. Do not use neutral or default studio lighting. The jewelry must look like it was under the exact same lighting conditions as the model during the shoot.
 
 Do not change the model's face, skin, hair, pose, clothing, or background.
 
 ${jewelryBrief}${stackNote}${modeNote}
 
-The result must be a real photograph where the jewelry is both physically natural AND an exact match to the reference pieces.`;
+The jewelry must integrate seamlessly into the existing image — same light, same grain, same depth of field, same color grading. A real photograph, not a composite.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -612,13 +618,16 @@ Improve this jewelry to the quality level of a luxury e-commerce packshot:
 - The jewelry must remain physically natural: same drape, same position, same contact with skin
 - Shadows under the chain and pendant must be precise and subtle
 
-Match the reference jewelry image exactly — same design, same proportions, same details. The jewelry must look like it was photographed with a macro lens at high resolution.
+Match the reference jewelry image exactly — same design, same proportions, same details.
+
+LIGHT MATCHING — The improved jewelry must have the exact same lighting as the rest of the image. Analyze the light direction from the skin highlights, match the shadow softness, match the color temperature. Metal reflections must show the environment (nearby clothing, skin warmth) — not clean generic highlights. The jewelry must not appear brighter or differently lit than the surrounding skin. It must sit within the same dynamic range and exposure.
 
 DO NOT CHANGE ANYTHING ELSE:
-- Model's face, skin, hair, pose, clothing, background — identical
-- Lighting, color grading, grain, contrast — identical${preserveOthers}
+- Model's face, skin, hair, pose, clothing, background — pixel-identical
+- Lighting, color grading, grain, contrast — identical
+- Other jewelry — untouched${preserveOthers}
 
-Only the targeted jewelry should differ — it should now look sharp, detailed, and perfectly realistic.`;
+The improved jewelry must be sharp, detailed, perfectly lit to match the scene, and indistinguishable from a real packshot.`;
 }
 
 /**
