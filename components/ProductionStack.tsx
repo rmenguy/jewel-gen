@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useProductionStore } from '../stores/useProductionStore';
-import { StackLayer } from '../types';
+import { StackLayer, ProductionStackSession } from '../types';
 import {
   executeComposition,
   resolveGenerationFlow,
@@ -115,32 +115,31 @@ export const ProductionStack: React.FC = () => {
 
   // ── Exécution du moteur de composition ──────────────────────
 
-  const runSingleComposition = useCallback(async (): Promise<string | null> => {
-    const store = useProductionStore.getState();
-    const session = store.stackSession;
-    if (!session || session.layers.length === 0) return null;
+  /**
+   * Lance une seule composition à partir d'un snapshot figé de la session.
+   * Reçoit la session originale en paramètre pour ne PAS relire le store
+   * (qui a pu être modifié par une prise précédente).
+   */
+  const runSingleComposition = useCallback(async (
+    originalSession: ProductionStackSession,
+  ): Promise<string | null> => {
+    // Clone frais à chaque prise — reset complet
+    const fresh = structuredClone(originalSession);
+    fresh.chatSession = null;
+    fresh.currentImage = fresh.baseImage; // repartir de la base
+    fresh.status = 'planning';
+    fresh.stepStates = [];
 
-    const mutableSession = structuredClone(session);
-    mutableSession.chatSession = null;
-
-    initializeStepStates(mutableSession);
+    initializeStepStates(fresh);
 
     await executeComposition(
-      mutableSession,
+      fresh,
       (message) => setProgressText(message),
-      (stepIndex, stepState) => {
-        useProductionStore.getState().updateStepState(stepIndex, {
-          status: stepState.status,
-          currentAttempt: stepState.currentAttempt,
-          snapshots: stepState.snapshots,
-          approvedSnapshotIndex: stepState.approvedSnapshotIndex,
-          error: stepState.error,
-        });
-      },
+      () => {}, // pas besoin de sync le store pour chaque prise intermédiaire
     );
 
-    compactSnapshots(mutableSession);
-    return mutableSession.currentImage;
+    compactSnapshots(fresh);
+    return fresh.currentImage;
   }, []);
 
   const handleExecuteStack = useCallback(async () => {
@@ -153,6 +152,10 @@ export const ProductionStack: React.FC = () => {
     setShotResults([]);
     setSelectedShot(null);
 
+    // Capturer un snapshot figé de la session AVANT toute modification
+    const frozenSession = structuredClone(session);
+    frozenSession.chatSession = null;
+
     store.updateStackSession({ status: 'executing' });
 
     try {
@@ -164,7 +167,7 @@ export const ProductionStack: React.FC = () => {
           setProgressText(`Prise ${shot + 1}/${shotCount}…`);
         }
 
-        const result = await runSingleComposition();
+        const result = await runSingleComposition(frozenSession);
         if (result) {
           results.push(result);
           setShotResults([...results]);
