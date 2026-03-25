@@ -137,19 +137,23 @@ export function buildLuxuryJewelryPrompt(opts: {
       : '\n\nContinue from the previous image. Add ONLY the new piece — do not alter anything already present.'
     : `\n\nReference image 1 below is the model photograph. The next ${activeLayers.length} image(s) are the jewelry pieces to place — compose them all in a single shot.`;
 
-  return `Generate a photograph of this model wearing the jewelry shown in the reference images. The photograph must look like the jewelry was physically present during the original photoshoot — not added afterwards.
+  return `This is a photograph from a luxury jewelry brand campaign. The model is wearing the jewelry pieces shown in the reference images. Generate this photograph.
 
-The most important thing: the jewelry must be WORN, not pasted. Imagine the model put on these necklaces before the photographer pressed the shutter. The chain wraps around the back of her neck and drapes forward over her collarbones — you can see it disappear behind her neck on both sides. The chain follows every subtle curve of her skin: it dips into the hollow above the collarbone, it rises over the collarbone bone, it moves slightly when she breathes. Where the chain rests on skin, the skin underneath is very slightly compressed. The pendant hangs from the chain pulled by gravity — it swings slightly forward, closer to the camera than her chest, creating natural depth.
+Do not think of this as editing or adding jewelry to an existing photo. Think of it as generating the actual moment the photographer captured: the model had already put on the necklace, the stylist had adjusted it, and the photographer took the shot. The jewelry is part of the scene. It was always there.
 
-The lighting on the jewelry must come from the exact same source as the lighting on her skin. Look at where the highlights fall on her nose, her forehead, her shoulders — the metal must catch light from that same direction. If the photograph uses soft natural light, the reflections on the gold must be soft and warm, not sharp studio highlights. The jewelry must have the same slight softness, the same grain, the same color temperature as the rest of the photograph. It should be impossible to tell where the original photo ends and the jewelry begins.
+The chain goes around the back of the neck — you cannot see that part. It emerges on both sides and drapes forward across the collarbones. It rests in the natural hollows of the neck and clavicle area. The skin is very slightly indented where the chain presses. The pendant hangs with weight — it is closer to the camera than the chest, creating real depth separation.
 
-Use the reference jewelry images to match the design: the chain pattern, pendant shape, metal color, and stones. Keep proportions realistic for a real piece of jewelry on a real human neck.
+The metal surface of the jewelry reflects the environment of this specific photograph. Study what is around the model: if there is a softbox, the gold shows a soft rectangular highlight. If there is a window, there is a long bright streak. If her jean jacket is next to the chain, the blue denim reflects faintly in the polished gold. The warm tone of her skin bounces onto the underside of the chain. These environment reflections are what make jewelry look real in a photograph — without them it looks synthetic.
 
-Do not alter the model's face, expression, skin, hair, pose, clothing, or background.
+The jewelry must have exactly the same sharpness as the skin at the same depth. If the photo has shallow depth of field, parts of the necklace that are slightly in front or behind the focus plane should have the same subtle blur as the skin at that depth. The jewelry must have the same film grain, the same color grading, the same contrast as the rest of the image.
+
+Match the jewelry design from the reference images: chain style, pendant shape, metal color, stones. Keep realistic proportions for a human neck.
+
+Do not change the model's face, skin, hair, pose, clothing, or background.
 
 ${jewelryBrief}${stackNote}${modeNote}
 
-The result must look like a real photograph, not a composite.`;
+This is a real photograph from a campaign shoot, not a composite.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
