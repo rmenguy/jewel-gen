@@ -28,7 +28,7 @@ import {
   getZonePlacementPrompt,
   extractBase64,
   fetchImageAsBase64,
-  IMAGE_MODEL,
+  getImageModel,
   parseImageResponse,
 } from './geminiService';
 

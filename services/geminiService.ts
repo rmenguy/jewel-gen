@@ -97,9 +97,8 @@ export function setThinkingLevel(level: 'off' | 'minimal' | 'High'): void { _thi
 
 const TEXT_MODEL = 'gemini-3-flash-preview';
 
-// Re-export pour compat externe (stackEngine, etc.)
-// Les appels internes utilisent _imageModel directement.
-export { _imageModel as IMAGE_MODEL };
+// Getter pour les consommateurs externes — toujours la valeur courante
+export const IMAGE_MODEL_REF = { get current() { return _imageModel; } };
 
 export function extractBase64(input: string): string {
   return input.includes('base64,') ? input.split(',')[1] : input;
@@ -307,7 +306,7 @@ export const generateImageFromPrompt = async (
   config?: ImageGenerationConfig
 ): Promise<ParsedImageResponse> => {
   return withRetry(async () => {
-    const response = await callUnifiedAPI(IMAGE_MODEL, {
+    const response = await callUnifiedAPI(_imageModel, {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
@@ -327,7 +326,7 @@ export const editImageFromPrompt = async (
 ): Promise<ParsedImageResponse> => {
   return withRetry(async () => {
     const data = extractBase64(imageBase64);
-    const response = await callUnifiedAPI(IMAGE_MODEL, {
+    const response = await callUnifiedAPI(_imageModel, {
       contents: [{
         parts: [
           { text: prompt },
@@ -352,7 +351,7 @@ export const editImageWithReferences = async (
   return withRetry(async () => {
     const effective = enforceReferenceBudget(bundle);
     const requestBody = buildEditRequest(prompt, effective, config);
-    const apiResponse = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const apiResponse = await callUnifiedAPI(_imageModel, requestBody);
     return { response: parseImageResponse(apiResponse), effective };
   });
 };
@@ -364,7 +363,7 @@ export const createImageChatSession = (config?: {
 }): ImageChatSession => {
   return {
     history: [],
-    model: IMAGE_MODEL,
+    model: _imageModel,
     generationConfig: {
       responseModalities: ['IMAGE', 'TEXT'],
       ...(config?.aspectRatio || config?.imageSize ? {
@@ -607,7 +606,7 @@ TECHNICAL: Shot on Hasselblad H6D loaded with Kodak Portra 400 film. Lens 80mm f
       prompt = parts.join('\n');
     }
 
-    const response = await callUnifiedAPI(IMAGE_MODEL, {
+    const response = await callUnifiedAPI(_imageModel, {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
@@ -763,7 +762,7 @@ BODY: ${bodyPrompt}.${criteria.customPrompt?.trim() ? `\nADDITIONAL: ${criteria.
 
     try {
         return await withRetry(async () => {
-            const genResponse = await callUnifiedAPI(IMAGE_MODEL, {
+            const genResponse = await callUnifiedAPI(_imageModel, {
                 contents: [{ parts: [{ text: generationPrompt }] }],
                 generationConfig: {
                     responseModalities: ['IMAGE', 'TEXT'],
@@ -834,7 +833,7 @@ TECHNICAL: Professional studio photography, Hasselblad quality, soft natural lig
             { inlineData: { mimeType: 'image/png', data: imageData } },
         ];
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
         });
@@ -985,7 +984,7 @@ export const generateProductionPhoto = async (
                     parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
 
                     console.log(`[PIPELINE-${label}] Single-pass generation`);
-                    const response = await callUnifiedAPI(IMAGE_MODEL, {
+                    const response = await callUnifiedAPI(_imageModel, {
                         contents: [{ parts }],
                         generationConfig: {
                             responseModalities: ['IMAGE', 'TEXT'],
@@ -1070,7 +1069,7 @@ export const _generateProductionPhotoFull = async (
         }
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBase64 } });
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } }
         });
@@ -1095,7 +1094,7 @@ export const _generateProductionPhotoFull = async (
                 const d = px.diagnosis;
                 const cp = d === 'shape' ? "Fix jewelry SHAPE to match reference." : d === 'color' ? `Fix jewelry COLOR: ${blueprint.colorDetails}.` : "Fix jewelry to match reference.";
                 const cd = extractBase64(cur);
-                const cr = await callUnifiedAPI(IMAGE_MODEL, { contents: [{ parts: [{ text: cp }, { inlineData: { mimeType: 'image/png', data: cd } }, { inlineData: { mimeType: 'image/jpeg', data: productBase64 } }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } } });
+                const cr = await callUnifiedAPI(_imageModel, { contents: [{ parts: [{ text: cp }, { inlineData: { mimeType: 'image/png', data: cd } }, { inlineData: { mimeType: 'image/jpeg', data: productBase64 } }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { imageSize: '4K' } } });
                 const crParsed = parseImageResponse(cr);
                 let ci: string | null = crParsed.images[0]?.dataUri || null;
                 if (!ci) continue;
@@ -1187,7 +1186,7 @@ export const addJewelryToExisting = async (
                     { inlineData: { mimeType: 'image/jpeg', data: productData } },
                 ];
 
-                const correctionResponse = await callUnifiedAPI(IMAGE_MODEL, {
+                const correctionResponse = await callUnifiedAPI(_imageModel, {
                     contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
@@ -1368,7 +1367,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
         }
 
         console.log('[STACK] Calling Gemini API for stacking');
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1441,7 +1440,7 @@ ABSOLUTE RULES — PRESERVE THE ORIGINAL PHOTO:
                     correctionParts.push({ inlineData: { mimeType: 'image/jpeg', data: pm.base64 } });
                 }
 
-                const correctionResponse = await callUnifiedAPI(IMAGE_MODEL, {
+                const correctionResponse = await callUnifiedAPI(_imageModel, {
                     contents: [{ parts: correctionParts }],
                     generationConfig: {
                         responseModalities: ['IMAGE', 'TEXT'],
@@ -1618,7 +1617,7 @@ export const generateBareMannequin = async (
             },
         ];
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1702,7 +1701,7 @@ export const dressWithJewelry = async (
             },
         ];
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -1750,7 +1749,7 @@ CRITICAL RULES:
             { inlineData: { mimeType: 'image/png', data: bareData } },
         ];
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -2045,7 +2044,7 @@ export const refineMannequinImage = async (
             });
         }
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts }],
             generationConfig: {
                 responseModalities: ['IMAGE', 'TEXT'],
@@ -2073,7 +2072,7 @@ export const freeformEditImage = async (
     return withRetry(async () => {
         const imageData = extractBase64(currentImageBase64);
 
-        const response = await callUnifiedAPI(IMAGE_MODEL, {
+        const response = await callUnifiedAPI(_imageModel, {
             contents: [{ parts: [
                 { text: `You are editing a fashion/jewelry photo. Follow the user's instruction precisely. Keep everything else EXACTLY identical (face, body, pose, lighting, background) unless told otherwise.\n\nINSTRUCTION: ${userPrompt}` },
                 { inlineData: { mimeType: 'image/png', data: imageData } },
@@ -2147,7 +2146,7 @@ export const applyBatchRefinements = async (
     };
 
     console.log(`[REFINE] Calling ${IMAGE_MODEL}`);
-    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const response = await callUnifiedAPI(_imageModel, requestBody);
 
     const parsed = parseImageResponse(response);
     if (parsed.images.length > 0) {
@@ -2250,7 +2249,7 @@ OUTPUT FORMAT: WIDE LANDSCAPE 16:9 banner format. This is a website hero banner 
   };
 
   return withRetry(async () => {
-    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const response = await callUnifiedAPI(_imageModel, requestBody);
 
     const parsed = parseImageResponse(response);
     if (parsed.images.length > 0) {
@@ -2332,7 +2331,7 @@ QUALITY: 8K hyper-realistic, ultra-detailed.`;
   };
 
   return withRetry(async () => {
-    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const response = await callUnifiedAPI(_imageModel, requestBody);
     const parsed = parseImageResponse(response);
     if (parsed.images.length > 0) {
       return parsed.images[0].dataUri;
@@ -2397,7 +2396,7 @@ QUALITY: 8K hyper-realistic, maintain banner format.`;
   };
 
   return withRetry(async () => {
-    const response = await callUnifiedAPI(IMAGE_MODEL, requestBody);
+    const response = await callUnifiedAPI(_imageModel, requestBody);
     const parsed = parseImageResponse(response);
     if (parsed.images.length > 0) {
       return parsed.images[0].dataUri;
