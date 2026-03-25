@@ -161,7 +161,8 @@ async function callUnifiedAPI(
 ): Promise<any> {
   const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
   const body = JSON.stringify(requestBody);
-  console.log(`[GEMINI] Calling ${model}, body size: ${body.length}`);
+  const gc = (requestBody as any).generationConfig;
+  console.log(`[GEMINI] Calling ${model}, body size: ${body.length}, imageConfig:`, gc?.imageConfig || 'NONE');
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -265,6 +266,9 @@ function buildEditRequest(
     generationConfig: {
       responseModalities: ['IMAGE', 'TEXT'],
       ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+      thinkingConfig: {
+        thinkingLevel: 'High',
+      },
     },
   };
 }
@@ -280,6 +284,7 @@ export const generateImageFromPrompt = async (
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
         ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+        thinkingConfig: { thinkingLevel: 'High' },
       },
     });
     return parseImageResponse(response);
@@ -305,6 +310,7 @@ export const editImageFromPrompt = async (
       generationConfig: {
         responseModalities: ['IMAGE', 'TEXT'],
         ...(config?.imageConfig ? { imageConfig: config.imageConfig } : {}),
+        thinkingConfig: { thinkingLevel: 'High' },
       },
     });
     return parseImageResponse(response);
@@ -341,6 +347,7 @@ export const createImageChatSession = (config?: {
           ...(config.imageSize && { imageSize: config.imageSize }),
         },
       } : {}),
+      thinkingConfig: { thinkingLevel: 'High' },
     },
   };
 };
