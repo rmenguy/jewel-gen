@@ -11,6 +11,10 @@ import {
 } from '../services/stackEngine';
 import type { GenerationFlow } from '../services/stackEngine';
 import { downloadBase64Image } from '../services/downloadService';
+import {
+  getImageModel, setImageModel,
+  getThinkingLevel, setThinkingLevel,
+} from '../services/geminiService';
 
 // Panneaux enfants
 import { BasePhotoPanel } from './stack/BasePhotoPanel';
@@ -45,6 +49,8 @@ export const ProductionStack: React.FC = () => {
   const [pendingBaseImage, setPendingBaseImage] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageSize, setImageSize] = useState('1K');
+  const [imageModel, setImageModelState] = useState(getImageModel());
+  const [thinkingLevel, setThinkingLevelState] = useState(getThinkingLevel());
 
   // Modale de préréglages
   const [presetModalOpen, setPresetModalOpen] = useState(false);
@@ -94,6 +100,21 @@ export const ProductionStack: React.FC = () => {
       updateStackSession({ imageSize: value });
     }
   }, [stackSession, updateStackSession]);
+
+  const handleImageModelChange = useCallback((value: string) => {
+    setImageModel(value);
+    setImageModelState(value);
+    // Si on passe sur Pro, désactiver thinking (non supporté)
+    if (value.includes('-pro-image-')) {
+      setThinkingLevel('off');
+      setThinkingLevelState('off');
+    }
+  }, []);
+
+  const handleThinkingLevelChange = useCallback((value: string) => {
+    setThinkingLevel(value as any);
+    setThinkingLevelState(value);
+  }, []);
 
   const handleAddLayer = useCallback((layer: StackLayer) => {
     addLayerToStack(layer);
@@ -332,6 +353,10 @@ export const ProductionStack: React.FC = () => {
             imageSize={isLocked ? stackSession!.imageSize : imageSize}
             onAspectRatioChange={handleAspectRatioChange}
             onImageSizeChange={handleImageSizeChange}
+            imageModel={imageModel}
+            onImageModelChange={handleImageModelChange}
+            thinkingLevel={thinkingLevel}
+            onThinkingLevelChange={handleThinkingLevelChange}
             disabled={isDisabled}
           />
 

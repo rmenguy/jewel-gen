@@ -23,11 +23,26 @@ const IMAGE_SIZE_LABELS: Record<string, string> = {
   '4K': 'Ultra (4K)',
 };
 
+const MODEL_OPTIONS = [
+  { value: 'gemini-3-pro-image-preview', label: 'Pro (qualité max)' },
+  { value: 'gemini-3.1-flash-image-preview', label: 'Flash (rapide)' },
+] as const;
+
+const THINKING_OPTIONS = [
+  { value: 'off', label: 'Désactivé' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'High', label: 'Élevé' },
+] as const;
+
 interface OutputFormatSelectorProps {
   aspectRatio: string;
   imageSize: string;
   onAspectRatioChange: (value: string) => void;
   onImageSizeChange: (value: string) => void;
+  imageModel: string;
+  onImageModelChange: (value: string) => void;
+  thinkingLevel: string;
+  onThinkingLevelChange: (value: string) => void;
   disabled?: boolean;
 }
 
@@ -36,10 +51,66 @@ export const OutputFormatSelector: React.FC<OutputFormatSelectorProps> = ({
   imageSize,
   onAspectRatioChange,
   onImageSizeChange,
+  imageModel,
+  onImageModelChange,
+  thinkingLevel,
+  onThinkingLevelChange,
   disabled = false,
 }) => {
+  const isFlash = imageModel.includes('flash');
+
   return (
     <div className="space-y-4">
+      {/* Modèle IA */}
+      <div>
+        <SectionLabel>MODÈLE IA</SectionLabel>
+        <div className="flex gap-2">
+          {MODEL_OPTIONS.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => !disabled && onImageModelChange(m.value)}
+              className={`flex-1 text-xs py-1.5 rounded-lg transition-colors ${
+                imageModel === m.value
+                  ? 'bg-indigo-600 text-white font-semibold'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              } disabled:opacity-40`}
+              disabled={disabled}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Thinking — seulement pour Flash */}
+      {isFlash && (
+        <div>
+          <SectionLabel>NIVEAU DE RÉFLEXION</SectionLabel>
+          <div className="flex gap-1">
+            {THINKING_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => !disabled && onThinkingLevelChange(t.value)}
+                className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
+                  thinkingLevel === t.value
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                } disabled:opacity-40`}
+                disabled={disabled}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Élevé = meilleure qualité, plus lent
+          </p>
+        </div>
+      )}
+
+      {/* Format */}
       <div>
         <SectionLabel>FORMAT DE SORTIE</SectionLabel>
         <div className="flex flex-wrap gap-2">
@@ -54,6 +125,7 @@ export const OutputFormatSelector: React.FC<OutputFormatSelectorProps> = ({
         </div>
       </div>
 
+      {/* Résolution */}
       <div>
         <SectionLabel>RÉSOLUTION</SectionLabel>
         <select

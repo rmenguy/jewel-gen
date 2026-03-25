@@ -86,8 +86,20 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
 
 // ─── Unified Image Service Infrastructure ───────────────────────
 
-export const IMAGE_MODEL = 'gemini-3-pro-image-preview';
-const TEXT_MODEL = 'gemini-3-flash-preview'; // For text-only tasks (MODEL-06)
+// Modèle image configurable à runtime via setImageModel()
+let _imageModel = 'gemini-3-pro-image-preview';
+let _thinkingLevel: 'off' | 'minimal' | 'High' = 'off';
+
+export function getImageModel(): string { return _imageModel; }
+export function setImageModel(model: string): void { _imageModel = model; }
+export function getThinkingLevel(): string { return _thinkingLevel; }
+export function setThinkingLevel(level: 'off' | 'minimal' | 'High'): void { _thinkingLevel = level; }
+
+const TEXT_MODEL = 'gemini-3-flash-preview';
+
+// Re-export pour compat externe (stackEngine, etc.)
+// Les appels internes utilisent _imageModel directement.
+export { _imageModel as IMAGE_MODEL };
 
 export function extractBase64(input: string): string {
   return input.includes('base64,') ? input.split(',')[1] : input;
@@ -155,14 +167,33 @@ export const IMAGE_SIZES = [
   { value: '4K', label: '4K (Final)' },
 ] as const;
 
+/**
+ * Injecte thinkingConfig dans le body si le niveau n'est pas 'off'
+ * et que le modèle le supporte (Flash uniquement, pas Pro).
+ */
+function injectThinking(requestBody: Record<string, unknown>, model: string): Record<string, unknown> {
+  if (_thinkingLevel === 'off') return requestBody;
+  // gemini-3-pro-image-preview ne supporte pas thinkingConfig
+  if (model.includes('-pro-image-')) return requestBody;
+  const gc = (requestBody as any).generationConfig || {};
+  return {
+    ...requestBody,
+    generationConfig: {
+      ...gc,
+      thinkingConfig: { thinkingLevel: _thinkingLevel },
+    },
+  };
+}
+
 async function callUnifiedAPI(
   model: string,
   requestBody: Record<string, unknown>
 ): Promise<any> {
+  const finalBody = injectThinking(requestBody, model);
   const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${API_KEY}`;
-  const body = JSON.stringify(requestBody);
-  const gc = (requestBody as any).generationConfig;
-  console.log(`[GEMINI] Calling ${model}, body size: ${body.length}, imageConfig:`, gc?.imageConfig || 'NONE');
+  const body = JSON.stringify(finalBody);
+  const gc = (finalBody as any).generationConfig;
+  console.log(`[GEMINI] ${model} | size: ${body.length} | imageConfig:`, gc?.imageConfig || 'NONE', '| thinking:', gc?.thinkingConfig?.thinkingLevel || 'off');
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
