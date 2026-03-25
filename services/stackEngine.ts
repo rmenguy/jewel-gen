@@ -151,6 +151,8 @@ LIGHT MATCHING — Before rendering the jewelry, analyze the existing photograph
 
 Apply this analysis to the jewelry: highlights on the metal must come from the same direction and have the same softness as highlights on the skin. Shadows under the chain must match existing body shadows in direction, softness, and intensity. Metal surfaces must show subtle, environment-based reflections — the blurred shape of nearby clothing, the warm glow of skin — not artificial or overly clean highlights. Do not introduce any new light source. Do not use neutral or default studio lighting. The jewelry must look like it was under the exact same lighting conditions as the model during the shoot.
 
+METAL REALISM — The gold must look like real gold that has been worn, handled, and exists in the physical world — not like a 3D render or a flat yellow color. Real gold has subtle tonal variations across its surface: warmer and darker in concave areas where light doesn't reach, brighter and cooler on convex edges that catch light directly. Each chain link reflects its micro-environment slightly differently depending on its angle. The surface has invisible micro-scratches and wear marks that break up reflections into slightly irregular patterns — not perfect mirror streaks, but soft, textured, living reflections. The gold color itself is not uniform: it shifts subtly between warm yellow, pale champagne, and deep amber depending on what it reflects. Introduce subtle micro-contrast variations across the metal surface — tiny differences in brightness between adjacent links, slight tonal shifts where the chain curves — that make the gold feel three-dimensional and photographed, not painted or generated. The gold must inherit the scene's color grading: if the photograph is warm, the gold is rich and deep; if cool, the gold has a slightly muted, sophisticated tone. Never render gold as a flat saturated yellow or an overly polished mirror.
+
 Do not change the model's face, skin, hair, pose, clothing, or background.
 
 ${jewelryBrief}${stackNote}${modeNote}
@@ -621,6 +623,8 @@ Improve this jewelry to the quality level of a luxury e-commerce packshot:
 Match the reference jewelry image exactly — same design, same proportions, same details.
 
 LIGHT MATCHING — The improved jewelry must have the exact same lighting as the rest of the image. Analyze the light direction from the skin highlights, match the shadow softness, match the color temperature. Metal reflections must show the environment (nearby clothing, skin warmth) — not clean generic highlights. The jewelry must not appear brighter or differently lit than the surrounding skin. It must sit within the same dynamic range and exposure.
+
+METAL REALISM — The gold must have subtle tonal variations: warmer in concave areas, brighter on convex edges. Each link reflects its micro-environment slightly differently. The surface has invisible micro-scratches that break up reflections into slightly irregular, living patterns — not perfect mirror streaks. The gold shifts subtly between warm yellow, pale champagne, and deep amber depending on what it reflects. Add micro-contrast variations between adjacent links. Never render gold as a flat saturated yellow or overly polished mirror.
 
 DO NOT CHANGE ANYTHING ELSE:
 - Model's face, skin, hair, pose, clothing, background — pixel-identical
