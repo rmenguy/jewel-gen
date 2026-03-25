@@ -572,6 +572,152 @@ export async function sendFollowUpEdit(
   return newImage;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// REFINEMENT CIBLÉ — Améliorer un ou plusieurs bijoux spécifiques
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Prompt ultra-ciblé pour le refinement d'un bijou spécifique.
+ * Priorité absolue : ne rien casser, ne toucher QUE le bijou ciblé.
+ */
+export function buildJewelryRefinementPrompt(
+  selectedLayers: StackLayer[],
+  allLayers: StackLayer[],
+): string {
+  const targetNames = selectedLayers.map(l => `"${l.name}"`).join(', ');
+  const otherNames = allLayers
+    .filter(l => !selectedLayers.find(s => s.id === l.id))
+    .map(l => `"${l.name}"`)
+    .join(', ');
+
+  const targetDescriptions = selectedLayers.map(l =>
+    `- ${l.name} (${l.productCategory}), at ${l.targetZone.replace(/-/g, ' ')}`
+  ).join('\n');
+
+  const preserveOthers = otherNames
+    ? `\n\nThese other jewelry pieces must remain COMPLETELY UNTOUCHED — not a single pixel changed: ${otherNames}.`
+    : '';
+
+  return `Look at this photograph. Focus on the following jewelry: ${targetNames}. Improve ONLY this jewelry to achieve perfect packshot quality. Everything else in the image must remain pixel-identical.
+
+TARGET JEWELRY TO IMPROVE:
+${targetDescriptions}
+
+Improve this jewelry to the quality level of a luxury e-commerce packshot:
+- Every chain link must be individually sharp and distinct — no blur, no smoothing
+- Metal surface must show realistic texture: polished gold has mirror-like reflections, brushed gold has fine directional lines
+- If there are stones, each facet must catch light individually
+- The pendant must have crisp edges and visible depth — it is a real 3D object
+- Micro-details must be visible: link connections, clasp mechanisms, surface grain
+- The jewelry must remain physically natural: same drape, same position, same contact with skin
+- Shadows under the chain and pendant must be precise and subtle
+
+Match the reference jewelry image exactly — same design, same proportions, same details. The jewelry must look like it was photographed with a macro lens at high resolution.
+
+DO NOT CHANGE ANYTHING ELSE:
+- Model's face, skin, hair, pose, clothing, background — identical
+- Lighting, color grading, grain, contrast — identical${preserveOthers}
+
+Only the targeted jewelry should differ — it should now look sharp, detailed, and perfectly realistic.`;
+}
+
+/**
+ * Améliore un ou plusieurs bijoux sélectionnés via le chat conversationnel.
+ * L'image composite actuelle sert de base — seuls les bijoux ciblés sont retouchés.
+ */
+export async function refineSelectedJewelry(
+  session: ProductionStackSession,
+  selectedLayerIds: string[],
+  onProgress: (message: string) => void,
+): Promise<string> {
+  if (!session.currentImage) {
+    throw new Error('Pas d\'image à améliorer');
+  }
+
+  const selectedLayers = session.layers.filter(l => selectedLayerIds.includes(l.id));
+  if (selectedLayers.length === 0) {
+    throw new Error('Aucun bijou sélectionné');
+  }
+
+  const names = selectedLayers.map(l => l.name).join(', ');
+  onProgress(`Amélioration de ${names}…`);
+
+  // Initialiser le chat si absent
+  if (!session.chatSession) {
+    session.chatSession = createImageChatSession({
+      aspectRatio: session.aspectRatio,
+      imageSize: session.imageSize,
+    });
+  }
+
+  // Construire le prompt de refinement
+  const prompt = buildJewelryRefinementPrompt(selectedLayers, session.layers);
+
+  const userParts: any[] = [{ text: prompt }];
+
+  // Au premier tour, inclure l'image actuelle + les références bijoux
+  if (session.chatSession.history.length === 0) {
+    userParts.push({
+      inlineData: { mimeType: 'image/png', data: extractBase64(session.currentImage) },
+    });
+  }
+
+  // Inclure les images références des bijoux ciblés pour la fidélité
+  for (const layer of selectedLayers) {
+    let jewelryBase64: string;
+    if (layer.productImage.startsWith('http')) {
+      jewelryBase64 = await fetchImageAsBase64(layer.productImage);
+    } else {
+      jewelryBase64 = extractBase64(layer.productImage);
+    }
+    const mime = layer.productImage.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+    userParts.push({
+      inlineData: { mimeType: mime, data: jewelryBase64 },
+    });
+  }
+
+  const result = await continueImageChatSession(session.chatSession, userParts);
+
+  if (result.images.length === 0) {
+    throw new Error('Aucune image retournée');
+  }
+
+  const newImage = result.images[0].dataUri;
+
+  // Enregistrer le snapshot
+  const snapshot: GenerationSnapshot = {
+    stepIndex: -2,
+    layerId: `refine-${selectedLayerIds.join('+')}`,
+    prompt,
+    referencesUsed: selectedLayers.map(l => ({
+      id: `refine-${l.id}`,
+      kind: 'object' as const,
+      role: `Refinement: ${l.name}`,
+      base64: '',
+      mimeType: 'image/jpeg',
+      priority: 0,
+    })),
+    referencesExcluded: [],
+    generationConfig: {
+      imageConfig: {
+        imageSize: session.imageSize,
+        aspectRatio: session.aspectRatio,
+      },
+    },
+    inputImage: session.currentImage,
+    outputImage: newImage,
+    validation: null,
+    timestamp: Date.now(),
+    attemptNumber: session.followUpHistory.length + 1,
+  };
+
+  session.followUpHistory.push(snapshot);
+  session.currentImage = newImage;
+
+  onProgress(`${names} amélioré ✓`);
+  return newImage;
+}
+
 /**
  * Libère la mémoire en supprimant les images des tentatives non approuvées.
  */

@@ -7,6 +7,9 @@ interface StackLayerRowProps {
   onReorder: (dragId: string, dropId: string) => void;
   onRemove: (id: string) => void;
   onRetry?: (id: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  selectable?: boolean;
   disabled?: boolean;
 }
 
@@ -28,6 +31,9 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
   onReorder,
   onRemove,
   onRetry,
+  isSelected = false,
+  onToggleSelect,
+  selectable = false,
   disabled = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -107,6 +113,26 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
           <circle cx="9" cy="17" r="1.5" />
         </svg>
       </button>
+
+      {/* Checkbox de sélection — visible quand composition terminée */}
+      {selectable && onToggleSelect && (
+        <button
+          type="button"
+          onClick={() => onToggleSelect(layer.id)}
+          className={`flex-shrink-0 w-5 h-5 rounded border-2 transition-colors flex items-center justify-center ${
+            isSelected
+              ? 'bg-indigo-600 border-indigo-600'
+              : 'border-gray-300 hover:border-indigo-400'
+          }`}
+          aria-label={`Sélectionner ${layer.name}`}
+        >
+          {isSelected && (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </button>
+      )}
 
       <div className="relative flex-shrink-0 w-10 h-10 rounded overflow-hidden bg-gray-100">
         <img

@@ -11,6 +11,11 @@ interface StackPlanPanelProps {
   onRemove: (id: string) => void;
   onRetry?: (id: string) => void;
   onAddLayer: (layer: StackLayer) => void;
+  selectedLayerIds?: string[];
+  onToggleSelect?: (id: string) => void;
+  onRefineSelection?: () => void;
+  isRefining?: boolean;
+  selectable?: boolean;
   disabled?: boolean;
 }
 
@@ -21,6 +26,11 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
   onRemove,
   onRetry,
   onAddLayer,
+  selectedLayerIds = [],
+  onToggleSelect,
+  onRefineSelection,
+  isRefining = false,
+  selectable = false,
   disabled = false,
 }) => {
   const handleReorder = useCallback(
@@ -69,12 +79,39 @@ export const StackPlanPanel: React.FC<StackPlanPanelProps> = ({
                 onReorder={handleReorder}
                 onRemove={onRemove}
                 onRetry={onRetry}
+                selectable={selectable}
+                isSelected={selectedLayerIds.includes(layer.id)}
+                onToggleSelect={onToggleSelect}
                 disabled={disabled}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Bouton d'amélioration ciblée */}
+      {selectable && selectedLayerIds.length > 0 && onRefineSelection && (
+        <div className="px-3 py-2 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={onRefineSelection}
+            disabled={disabled || isRefining}
+            className="w-full text-xs font-semibold py-2 px-3 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {isRefining ? (
+              <>
+                <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Amélioration en cours…
+              </>
+            ) : (
+              `✦ Améliorer ${selectedLayerIds.length > 1 ? `${selectedLayerIds.length} bijoux` : 'ce bijou'}`
+            )}
+          </button>
+        </div>
+      )}
 
       <div className="flex-shrink-0">
         <AddLayerForm onAddLayer={onAddLayer} disabled={disabled} />

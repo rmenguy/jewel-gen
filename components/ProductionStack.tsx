@@ -8,6 +8,7 @@ import {
   compactSnapshots,
   retryStep,
   sendFollowUpEdit,
+  refineSelectedJewelry,
 } from '../services/stackEngine';
 import type { GenerationFlow } from '../services/stackEngine';
 import { downloadBase64Image } from '../services/downloadService';
@@ -66,6 +67,10 @@ export const ProductionStack: React.FC = () => {
   const [shotCount, setShotCount] = useState(1);
   const [shotResults, setShotResults] = useState<string[]>([]);
   const [selectedShot, setSelectedShot] = useState<number | null>(null);
+
+  // Refinement ciblé
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
+  const [isRefining, setIsRefining] = useState(false);
 
   const isLocked = stackSession !== null;
   const baseImage = isLocked ? stackSession.baseImage : pendingBaseImage;
@@ -284,6 +289,50 @@ export const ProductionStack: React.FC = () => {
       setIsExecuting(false);
     }
   }, []);
+
+  // ── Sélection de bijoux pour refinement ───────────────────
+
+  const handleToggleLayerSelect = useCallback((layerId: string) => {
+    setSelectedLayerIds(prev =>
+      prev.includes(layerId)
+        ? prev.filter(id => id !== layerId)
+        : [...prev, layerId]
+    );
+  }, []);
+
+  const handleRefineSelection = useCallback(async () => {
+    const store = useProductionStore.getState();
+    const session = store.stackSession;
+    if (!session || selectedLayerIds.length === 0) return;
+
+    setIsRefining(true);
+    setError(null);
+
+    try {
+      const mutableSession = { ...session };
+
+      const newImage = await refineSelectedJewelry(
+        mutableSession,
+        selectedLayerIds,
+        (msg) => setProgressText(msg),
+      );
+
+      store.updateStackSession({
+        currentImage: newImage,
+        chatSession: mutableSession.chatSession,
+        followUpHistory: mutableSession.followUpHistory,
+      });
+
+      setSelectedLayerIds([]);
+      setProgressText('Bijou amélioré ✓');
+      setTimeout(() => setProgressText(null), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de l\'amélioration');
+      setProgressText(null);
+    } finally {
+      setIsRefining(false);
+    }
+  }, [selectedLayerIds]);
 
   // ── Sélection d'une prise ─────────────────────────────────
 
@@ -532,6 +581,11 @@ export const ProductionStack: React.FC = () => {
                 onRemove={handleRemoveLayer}
                 onRetry={handleRetryStep}
                 onAddLayer={handleAddLayer}
+                selectable={stackSession.status === 'completed' || stackSession.status === 'follow-up'}
+                selectedLayerIds={selectedLayerIds}
+                onToggleSelect={handleToggleLayerSelect}
+                onRefineSelection={handleRefineSelection}
+                isRefining={isRefining}
                 disabled={isDisabled}
               />
 
