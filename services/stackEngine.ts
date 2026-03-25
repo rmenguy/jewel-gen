@@ -137,7 +137,7 @@ export function buildLuxuryJewelryPrompt(opts: {
   );
   const earringsNote = hasEarrings ? `
 
-EARRING REALISM — Earrings are not placed ON the ear like a sticker — they hang FROM the ear through a piercing. The hook or post goes through the earlobe, and the earring body hangs below, pulled by gravity. Study the ear in the photograph: note its exact angle relative to the camera, the shape of the lobe, whether hair falls in front or behind. The earring must match this specific ear geometry — it is attached to THIS ear, not a generic one. The earring hangs at a natural angle determined by gravity and the head tilt — if the head tilts left, the right earring hangs more vertically and the left one angles slightly with the tilt. If both ears are visible, the earrings should NOT be perfectly mirrored — introduce slight natural asymmetry in angle and swing, because real earrings move independently. Where the earring touches or overlaps hair, the hair must pass naturally in front of or behind the earring — some strands in front, the earring visible between them, not pasted on top of the hair layer. The earring casts a tiny soft shadow on the neck below it. The attachment point at the lobe shows the lobe skin slightly deformed by the weight — not floating next to the ear.` : '';
+EARRINGS — Do not copy-paste the earring image onto the ear. Instead, generate what the earring would look like if the model was actually wearing it when the photo was taken. The earring hangs from the piercing hole in the lobe — it is not floating next to the ear. Hair partially covers it where it naturally would. The earring is seen from the same camera angle as the ear itself.` : '';
 
   // Mode instruction
   const modeNote = mode === 'sequential'
