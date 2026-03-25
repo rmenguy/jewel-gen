@@ -139,21 +139,17 @@ export function buildLuxuryJewelryPrompt(opts: {
 
   return `This is a photograph from a luxury jewelry brand campaign. The model is wearing the jewelry pieces shown in the reference images. Generate this photograph.
 
-Do not think of this as editing or adding jewelry to an existing photo. Think of it as generating the actual moment the photographer captured: the model had already put on the necklace, the stylist had adjusted it, and the photographer took the shot. The jewelry is part of the scene. It was always there.
+CRITICAL — EXACT JEWELRY REPRODUCTION AT MAXIMUM QUALITY: Study each reference jewelry image very carefully. The jewelry in the output must be the EXACT SAME piece as in the reference — not a similar one, not an interpretation, the SAME one. Copy the precise chain link pattern, the exact pendant shape and details, the exact number and color of stones, the exact metal tone (yellow gold, rose gold, silver). If the reference shows a specific clasp, charm, or texture, it must appear identically in the output. The client will hold the real piece next to your image — it must match. Render the jewelry at the highest possible detail and sharpness — every individual chain link must be visible and crisp, every stone facet must catch light, every surface texture must be rendered. This is a product shot for a luxury brand: the jewelry must be the sharpest, most detailed element in the frame.
 
-The chain goes around the back of the neck — you cannot see that part. It emerges on both sides and drapes forward across the collarbones. It rests in the natural hollows of the neck and clavicle area. The skin is very slightly indented where the chain presses. The pendant hangs with weight — it is closer to the camera than the chest, creating real depth separation.
+NATURAL INTEGRATION: The model put on this jewelry before the photographer pressed the shutter. The chain goes around the back of her neck, emerges on both sides, and drapes across the collarbones. It follows the skin's contours — dipping into hollows, rising over bones. The skin is slightly indented where the chain presses. The pendant hangs with real weight and depth.
 
-The metal surface of the jewelry reflects the environment of this specific photograph. Study what is around the model: if there is a softbox, the gold shows a soft rectangular highlight. If there is a window, there is a long bright streak. If her jean jacket is next to the chain, the blue denim reflects faintly in the polished gold. The warm tone of her skin bounces onto the underside of the chain. These environment reflections are what make jewelry look real in a photograph — without them it looks synthetic.
-
-The jewelry must have exactly the same sharpness as the skin at the same depth. If the photo has shallow depth of field, parts of the necklace that are slightly in front or behind the focus plane should have the same subtle blur as the skin at that depth. The jewelry must have the same film grain, the same color grading, the same contrast as the rest of the image.
-
-Match the jewelry design from the reference images: chain style, pendant shape, metal color, stones. Keep realistic proportions for a human neck.
+ENVIRONMENT LIGHTING: The metal reflects the actual environment of this photo. Study what surrounds the model — the gold shows soft reflections of nearby objects (clothing fabric, softbox shapes, skin warmth). The jewelry has the same sharpness, grain, color grading, contrast, and depth of field as the skin at that same depth. No synthetic highlights. No separate lighting.
 
 Do not change the model's face, skin, hair, pose, clothing, or background.
 
 ${jewelryBrief}${stackNote}${modeNote}
 
-This is a real photograph from a campaign shoot, not a composite.`;
+The result must be a real photograph where the jewelry is both physically natural AND an exact match to the reference pieces.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -197,14 +193,20 @@ export async function renderDirectComposite(
     priority: 0,
   }];
 
-  const objectRefs: ReferenceImage[] = resolvedLayers.map(({ layer, base64 }, i) => ({
-    id: `jewelry-${layer.id}`,
-    kind: 'object' as const,
-    role: `Bijou ${i + 1}: ${layer.name} (${layer.productCategory}) → ${layer.targetZone}`,
-    base64,
-    mimeType: 'image/jpeg',
-    priority: i + 1,
-  }));
+  const objectRefs: ReferenceImage[] = resolvedLayers.map(({ layer, base64 }, i) => {
+    // Détecter le mime type réel depuis le data URI original si possible
+    const mime = layer.productImage.startsWith('data:image/png') ? 'image/png'
+      : layer.productImage.startsWith('data:image/webp') ? 'image/webp'
+      : 'image/jpeg';
+    return {
+      id: `jewelry-${layer.id}`,
+      kind: 'object' as const,
+      role: `Bijou ${i + 1}: ${layer.name} (${layer.productCategory}) → ${layer.targetZone}`,
+      base64,
+      mimeType: mime,
+      priority: i + 1,
+    };
+  });
 
   const bundle: ReferenceBundle = {
     characterReferences: characterRefs,
