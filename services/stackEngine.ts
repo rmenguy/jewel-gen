@@ -130,6 +130,15 @@ export function buildLuxuryJewelryPrompt(opts: {
     ? '\n\nAll necklaces must be layered with clear separation — shortest closest to neck, longest falling lower. Each chain hangs independently with its own drape and gravity. No chain overlaps or merges with another.'
     : '';
 
+  // Earrings addendum — conditionnel, uniquement si des boucles sont présentes
+  const hasEarrings = activeLayers.some(l =>
+    l.targetZone === 'ear-lobe' || l.targetZone === 'ear-upper' ||
+    l.productCategory.toLowerCase().includes('boucle') || l.productCategory.toLowerCase().includes('earring')
+  );
+  const earringsNote = hasEarrings ? `
+
+EARRING REALISM — Earrings are not placed ON the ear like a sticker — they hang FROM the ear through a piercing. The hook or post goes through the earlobe, and the earring body hangs below, pulled by gravity. Study the ear in the photograph: note its exact angle relative to the camera, the shape of the lobe, whether hair falls in front or behind. The earring must match this specific ear geometry — it is attached to THIS ear, not a generic one. The earring hangs at a natural angle determined by gravity and the head tilt — if the head tilts left, the right earring hangs more vertically and the left one angles slightly with the tilt. If both ears are visible, the earrings should NOT be perfectly mirrored — introduce slight natural asymmetry in angle and swing, because real earrings move independently. Where the earring touches or overlaps hair, the hair must pass naturally in front of or behind the earring — some strands in front, the earring visible between them, not pasted on top of the hair layer. The earring casts a tiny soft shadow on the neck below it. The attachment point at the lobe shows the lobe skin slightly deformed by the weight — not floating next to the ear.` : '';
+
   // Mode instruction
   const modeNote = mode === 'sequential'
     ? isFirstTurn
@@ -154,7 +163,7 @@ Apply this analysis to the jewelry: highlights on the metal must come from the s
 METAL REALISM — The gold must look like real gold that has been worn, handled, and exists in the physical world — not like a 3D render or a flat yellow color. Real gold has subtle tonal variations across its surface: warmer and darker in concave areas where light doesn't reach, brighter and cooler on convex edges that catch light directly. Each chain link reflects its micro-environment slightly differently depending on its angle. The surface has invisible micro-scratches and wear marks that break up reflections into slightly irregular patterns — not perfect mirror streaks, but soft, textured, living reflections. The gold color itself is not uniform: it shifts subtly between warm yellow, pale champagne, and deep amber depending on what it reflects. Introduce subtle micro-contrast variations across the metal surface — tiny differences in brightness between adjacent links, slight tonal shifts where the chain curves — that make the gold feel three-dimensional and photographed, not painted or generated. The gold must inherit the scene's color grading: if the photograph is warm, the gold is rich and deep; if cool, the gold has a slightly muted, sophisticated tone. Never render gold as a flat saturated yellow or an overly polished mirror.
 
 Do not change the model's face, skin, hair, pose, clothing, or background.
-
+${earringsNote}
 ${jewelryBrief}${stackNote}${modeNote}
 
 The jewelry must integrate seamlessly into the existing image — same light, same grain, same depth of field, same color grading. A real photograph, not a composite.`;
