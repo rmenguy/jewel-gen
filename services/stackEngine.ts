@@ -178,6 +178,8 @@ export async function renderDirectComposite(
     } else {
       b64 = extractBase64(layer.productImage);
     }
+    const sizeKB = Math.round(b64.length * 3 / 4 / 1024);
+    console.log(`[STACK-ENGINE] Jewelry ref "${layer.name}": ${sizeKB}KB base64`);
     resolvedLayers.push({ layer, base64: b64 });
   }
 
@@ -221,15 +223,16 @@ export async function renderDirectComposite(
     mode: 'direct',
   });
 
+  const imageConfig = {
+    aspectRatio: session.aspectRatio,
+    imageSize: session.imageSize,
+  };
+  console.log('[STACK-ENGINE] Direct composite — imageConfig:', imageConfig, '| layers:', session.layers.length, '| refs:', characterRefs.length + objectRefs.length);
+
   onProgress(`Composition de ${session.layers.length} bijou${session.layers.length > 1 ? 'x' : ''} en cours…`);
 
   // 4. Un seul appel API multi-références
-  const { response, effective } = await editImageWithReferences(prompt, bundle, {
-    imageConfig: {
-      aspectRatio: session.aspectRatio,
-      imageSize: session.imageSize,
-    },
-  });
+  const { response, effective } = await editImageWithReferences(prompt, bundle, { imageConfig });
 
   if (response.images.length === 0) {
     throw new Error('Aucune image retournée par le modèle');
