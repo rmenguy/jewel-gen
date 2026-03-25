@@ -153,27 +153,13 @@ EARRINGS — Do not copy-paste the earring image onto the ear. Instead, generate
       : '\n\nContinue from the previous image. Add ONLY the new piece — do not alter anything already present.'
     : `\n\nReference image 1 below is the model photograph. The next ${activeLayers.length} image(s) are the jewelry pieces to place — compose them all in a single shot.`;
 
-  return `This is a photograph from a luxury jewelry brand campaign. The model is wearing the jewelry pieces shown in the reference images. Generate this photograph.
+  return `PRODUCT FIDELITY IS THE #1 PRIORITY. Each jewelry reference image is a real product photograph from a jewelry brand's catalog. The jewelry in your output must be the IDENTICAL piece — not inspired by it, not similar, IDENTICAL. The brand will compare your output side-by-side with the real product. Any difference in chain link pattern, pendant shape, number of stones, stone colors, metal tone, clasp design, or proportions means the image is rejected. Study each reference image carefully: count the links, trace the pendant outline, note every stone position. Each reference is sent twice for you to study thoroughly.
 
-CRITICAL — EXACT JEWELRY REPRODUCTION AT MAXIMUM QUALITY: Study each reference jewelry image very carefully. The jewelry in the output must be the EXACT SAME piece as in the reference — not a similar one, not an interpretation, the SAME one. Copy the precise chain link pattern, the exact pendant shape and details, the exact number and color of stones, the exact metal tone (yellow gold, rose gold, silver). If the reference shows a specific clasp, charm, or texture, it must appear identically in the output. The client will hold the real piece next to your image — it must match. Render the jewelry at the highest possible detail and sharpness — every individual chain link must be visible and crisp, every stone facet must catch light, every surface texture must be rendered. This is a product shot for a luxury brand: the jewelry must be the sharpest, most detailed element in the frame.
-
-NATURAL INTEGRATION: The model put on this jewelry before the photographer pressed the shutter. The chain goes around the back of her neck, emerges on both sides, and drapes across the collarbones. It follows the skin's contours — dipping into hollows, rising over bones. The skin is slightly indented where the chain presses. The pendant hangs with real weight and depth.
-
-LIGHT MATCHING — Before rendering the jewelry, analyze the existing photograph's lighting:
-1. Where is the main light source? Look at the brightest highlight on the model's forehead, nose bridge, and shoulder — that reveals the light direction.
-2. How soft or hard is the light? If shadows on the face have gradual edges, it is soft light (large source). If shadows are crisp, it is hard light (small source). The jewelry reflections must have the same softness.
-3. What is the color temperature? Look at the skin tone highlights — are they warm (golden/yellow) or cool (blue/white)? The jewelry highlights must have the exact same color temperature.
-4. What is the exposure and dynamic range? The jewelry must not appear brighter or more contrasted than the surrounding skin. It must sit within the same dynamic range and exposure as the rest of the image.
-
-Apply this analysis to the jewelry: highlights on the metal must come from the same direction and have the same softness as highlights on the skin. Shadows under the chain must match existing body shadows in direction, softness, and intensity. Metal surfaces must show subtle, environment-based reflections — the blurred shape of nearby clothing, the warm glow of skin — not artificial or overly clean highlights. Do not introduce any new light source. Do not use neutral or default studio lighting. The jewelry must look like it was under the exact same lighting conditions as the model during the shoot.
-
-METAL REALISM — The gold must look like real gold that has been worn, handled, and exists in the physical world — not like a 3D render or a flat yellow color. Real gold has subtle tonal variations across its surface: warmer and darker in concave areas where light doesn't reach, brighter and cooler on convex edges that catch light directly. Each chain link reflects its micro-environment slightly differently depending on its angle. The surface has invisible micro-scratches and wear marks that break up reflections into slightly irregular patterns — not perfect mirror streaks, but soft, textured, living reflections. The gold color itself is not uniform: it shifts subtly between warm yellow, pale champagne, and deep amber depending on what it reflects. Introduce subtle micro-contrast variations across the metal surface — tiny differences in brightness between adjacent links, slight tonal shifts where the chain curves — that make the gold feel three-dimensional and photographed, not painted or generated. The gold must inherit the scene's color grading: if the photograph is warm, the gold is rich and deep; if cool, the gold has a slightly muted, sophisticated tone. Never render gold as a flat saturated yellow or an overly polished mirror.
-
-Do not change the model's face, skin, hair, pose, clothing, or background.
+Place this exact jewelry on the model photograph naturally — the model was wearing these pieces during the photoshoot. The chain drapes on the neck and collarbones following skin contours, the pendant hangs with gravity and depth. Match the photograph's lighting exactly: same light direction, same softness, same color temperature on the metal. Gold should have subtle tonal variations and environment reflections, not flat uniform color. Do not change the model's face, skin, hair, pose, clothing, or background.
 ${earringsNote}
 ${jewelryBrief}${stackNote}${modeNote}
 
-The jewelry must integrate seamlessly into the existing image — same light, same grain, same depth of field, same color grading. A real photograph, not a composite.`;
+The output is a campaign photograph for a luxury jewelry brand. The jewelry must be the sharpest element in the frame — every link, every stone facet, every surface detail must be crisp and match the reference exactly.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -219,19 +205,33 @@ export async function renderDirectComposite(
     priority: 0,
   }];
 
-  const objectRefs: ReferenceImage[] = resolvedLayers.map(({ layer, base64 }, i) => {
-    // Détecter le mime type réel depuis le data URI original si possible
+  // Chaque bijou est envoyé DEUX FOIS pour maximiser la fidélité :
+  // - 1ère instance : "product photo — copy this exact piece"
+  // - 2ème instance : "detail reference — match every detail"
+  // Le modèle accorde plus d'attention aux images répétées.
+  const objectRefs: ReferenceImage[] = [];
+  resolvedLayers.forEach(({ layer, base64 }, i) => {
     const mime = layer.productImage.startsWith('data:image/png') ? 'image/png'
       : layer.productImage.startsWith('data:image/webp') ? 'image/webp'
       : 'image/jpeg';
-    return {
-      id: `jewelry-${layer.id}`,
+    // Instance 1 : référence produit
+    objectRefs.push({
+      id: `jewelry-${layer.id}-product`,
       kind: 'object' as const,
-      role: `Bijou ${i + 1}: ${layer.name} (${layer.productCategory}) → ${layer.targetZone}`,
+      role: `PRODUCT PHOTO ${i + 1}: "${layer.name}" — this is the EXACT jewelry piece to reproduce. Copy every detail.`,
       base64,
       mimeType: mime,
-      priority: i + 1,
-    };
+      priority: i * 2 + 1,
+    });
+    // Instance 2 : référence détail (même image, rôle différent)
+    objectRefs.push({
+      id: `jewelry-${layer.id}-detail`,
+      kind: 'object' as const,
+      role: `DETAIL REFERENCE ${i + 1}: same piece "${layer.name}" — study chain links, stones, metal texture, pendant shape. Match exactly.`,
+      base64,
+      mimeType: mime,
+      priority: i * 2 + 2,
+    });
   });
 
   const bundle: ReferenceBundle = {
@@ -357,10 +357,12 @@ export async function renderSequentialEdit(
     });
   }
 
-  // Toujours inclure la référence bijou
-  userParts.push({
-    inlineData: { mimeType: 'image/jpeg', data: productBase64 },
-  });
+  // Envoyer la référence bijou DEUX FOIS pour maximiser la fidélité
+  const mime = layer.productImage.startsWith('data:image/png') ? 'image/png'
+    : layer.productImage.startsWith('data:image/webp') ? 'image/webp'
+    : 'image/jpeg';
+  userParts.push({ inlineData: { mimeType: mime, data: productBase64 } });
+  userParts.push({ inlineData: { mimeType: mime, data: productBase64 } });
 
   // 5. Appel conversationnel
   stepState.status = 'executing';
@@ -691,7 +693,7 @@ export async function refineSelectedJewelry(
     });
   }
 
-  // Inclure les images références des bijoux ciblés pour la fidélité
+  // Inclure les images références des bijoux ciblés DEUX FOIS pour la fidélité max
   for (const layer of selectedLayers) {
     let jewelryBase64: string;
     if (layer.productImage.startsWith('http')) {
@@ -700,9 +702,8 @@ export async function refineSelectedJewelry(
       jewelryBase64 = extractBase64(layer.productImage);
     }
     const mime = layer.productImage.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-    userParts.push({
-      inlineData: { mimeType: mime, data: jewelryBase64 },
-    });
+    userParts.push({ inlineData: { mimeType: mime, data: jewelryBase64 } });
+    userParts.push({ inlineData: { mimeType: mime, data: jewelryBase64 } });
   }
 
   const result = await continueImageChatSession(session.chatSession, userParts);
