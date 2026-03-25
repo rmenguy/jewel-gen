@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StackLayer, TargetZone, SizePreset } from '../../types';
+import { StackLayer, TargetZone, SizePreset, EarringMode, EarringSide } from '../../types';
 import { autoAssignZone } from '../../services/geminiService';
 import DropZone from '../ui/DropZone';
 
@@ -51,6 +51,8 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [targetZone, setTargetZone] = useState<TargetZone>(() => autoAssignZone(CATEGORIES[0]));
   const [sizePreset, setSizePreset] = useState<SizePreset>('medium');
+  const [earringMode, setEarringMode] = useState<EarringMode>('pair');
+  const [earringSide, setEarringSide] = useState<EarringSide>('left');
 
   useEffect(() => {
     setTargetZone(autoAssignZone(category));
@@ -62,6 +64,7 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
   const handleSubmit = () => {
     if (!productImage) return;
 
+    const isEarring = targetZone === 'ear-lobe' || targetZone === 'ear-upper';
     const layer: StackLayer = {
       id: crypto.randomUUID(),
       ordinal: 0,
@@ -70,6 +73,7 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
       productCategory: category,
       targetZone,
       sizePreset,
+      ...(isEarring ? { earringMode, earringSide: earringMode === 'single' ? earringSide : undefined } : {}),
     };
 
     onAddLayer(layer);
@@ -79,6 +83,8 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
     setCategory(CATEGORIES[0]);
     setTargetZone(autoAssignZone(CATEGORIES[0]));
     setSizePreset('medium');
+    setEarringMode('pair');
+    setEarringSide('left');
   };
 
   return (
@@ -154,6 +160,61 @@ const AddLayerForm: React.FC<AddLayerFormProps> = ({ onAddLayer, disabled = fals
           ))}
         </div>
       </div>
+
+      {/* Options boucles d'oreilles — visible si zone ear */}
+      {(targetZone === 'ear-lobe' || targetZone === 'ear-upper') && (
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Type de port</label>
+            <div className="flex gap-1">
+              {([
+                { key: 'pair' as EarringMode, label: 'Paire (2 oreilles)' },
+                { key: 'single' as EarringMode, label: 'Boucle unique' },
+              ]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setEarringMode(key)}
+                  disabled={disabled}
+                  className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
+                    earringMode === key
+                      ? 'bg-indigo-600 text-white font-semibold'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  } disabled:opacity-40`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {earringMode === 'single' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Oreille</label>
+              <div className="flex gap-1">
+                {([
+                  { key: 'left' as EarringSide, label: '← Gauche' },
+                  { key: 'right' as EarringSide, label: 'Droite →' },
+                ]).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEarringSide(key)}
+                    disabled={disabled}
+                    className={`flex-1 text-[10px] py-1 rounded-md transition-colors ${
+                      earringSide === key
+                        ? 'bg-indigo-600 text-white font-semibold'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    } disabled:opacity-40`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sélecteur de taille */}
       <div>

@@ -259,6 +259,8 @@ export type TargetZone =
   | 'ear-lobe' | 'ear-upper' | 'wrist' | 'finger';
 
 export type SizePreset = 'very_small' | 'small' | 'medium' | 'large';
+export type EarringMode = 'pair' | 'single';
+export type EarringSide = 'left' | 'right';
 
 export interface StackLayer {
   id: string;
@@ -268,6 +270,8 @@ export interface StackLayer {
   productCategory: string;
   targetZone: TargetZone;
   sizePreset: SizePreset;
+  earringMode?: EarringMode;   // 'pair' (les deux oreilles) ou 'single' (une seule)
+  earringSide?: EarringSide;   // si single: 'left' ou 'right'
   blueprint?: JewelryBlueprint;
   dimensions?: ProductDimensions;
 }

@@ -169,6 +169,12 @@ const StackLayerRow: React.FC<StackLayerRowProps> = React.memo(({
         </span>
       )}
 
+      {layer.earringMode && (
+        <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">
+          {layer.earringMode === 'pair' ? '×2' : layer.earringSide === 'left' ? '←G' : 'D→'}
+        </span>
+      )}
+
       {status === 'failed' && onRetry && (
         <button
           type="button"

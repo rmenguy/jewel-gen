@@ -115,14 +115,21 @@ export function buildLuxuryJewelryPrompt(opts: {
     ? [layers[currentLayerIndex]]
     : layers;
 
-  // Description de chaque bijou avec zone et taille
+  // Description de chaque bijou avec zone, taille, et options boucles
   const jewelryBrief = activeLayers.map((layer, i) => {
     const zone = getZonePlacementPrompt(layer.targetZone);
     const sizeCfg = SIZE_CONFIG[layer.sizePreset || 'medium'];
     const sizeNote = layer.sizePreset === 'medium' || !layer.sizePreset
       ? ''
       : ` (${sizeCfg.promptEn})`;
-    return `- Reference image ${i + 2}: ${layer.name} (${layer.productCategory}), worn at ${layer.targetZone.replace(/-/g, ' ')}${sizeNote}. ${zone}`;
+    // Info boucle d'oreille
+    let earringInfo = '';
+    if (layer.earringMode === 'pair') {
+      earringInfo = ' — PAIR: place the same earring on BOTH ears';
+    } else if (layer.earringMode === 'single' && layer.earringSide) {
+      earringInfo = ` — SINGLE: place on the ${layer.earringSide.toUpperCase()} ear only, the other ear stays empty`;
+    }
+    return `- Reference image ${i + 2}: ${layer.name} (${layer.productCategory}), worn at ${layer.targetZone.replace(/-/g, ' ')}${sizeNote}${earringInfo}. ${zone}`;
   }).join('\n');
 
   // Stacking addendum
